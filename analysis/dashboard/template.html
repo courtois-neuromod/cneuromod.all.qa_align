@@ -1,0 +1,1741 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CNeuroMod alignment QA</title>
+<style>
+/* ---- Tokens: light theme, then dark ---------------------------------- */
+:root {
+  color-scheme: light dark;
+  --page: #f9f9f7; --surface: #fcfcfb; --raised: #f1f0ec;
+  --ink: #0b0b0b; --ink2: #52514e; --muted: #7b7973;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, .12);
+  --quiet: #b5b4ab; --quiet2: #807e77;
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100;
+  --c5: #e87ba4; --c6: #008300; --c7: #6250d6; --c8: #e34948;
+  --band: rgba(42, 120, 214, .10); --zone: rgba(227, 73, 72, .09);
+  --pill: #fbd9cc; --pill-ink: #6b2408; --link: #1c5cab; --select: rgba(42, 120, 214, .12);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19; --raised: #252523;
+    --ink: #f0efec; --ink2: #c3c2b7; --muted: #98968f;
+    --grid: #2c2c2a; --axis: #45453f; --border: rgba(255, 255, 255, .14);
+    --quiet: #4d4c47; --quiet2: #85837c;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500;
+    --c5: #d55181; --c6: #0ca30c; --c7: #9085e9; --c8: #e66767;
+    --band: rgba(57, 135, 229, .16); --zone: rgba(230, 103, 103, .13);
+    --pill: #5a2610; --pill-ink: #ffd9c9; --link: #86b6ef; --select: rgba(57, 135, 229, .20);
+  }
+}
+
+/* ---- Page ------------------------------------------------------------ */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; overflow-x: hidden; }
+.page { max-width: 1320px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { font-size: 24px; font-weight: 600; margin: 0 0 6px; }
+h2 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
+h3 { font-size: 14px; font-weight: 600; margin: 16px 0 6px; }
+p { margin: 0 0 10px; max-width: 78ch; }
+a { color: var(--link); }
+.lede { color: var(--ink2); max-width: 86ch; }
+.note { color: var(--ink2); font-size: 13px; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+#qa-errors { display: none; white-space: pre-wrap; padding: 10px; margin: 10px 0; border: 2px solid var(--c8);
+  border-radius: 6px; background: var(--surface); }
+#qa-errors.shown { display: block; }
+:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
+
+/* ---- Controls and tabs ----------------------------------------------- */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 14px 0 6px; }
+.controls label, .field label { color: var(--ink2); font-size: 13px; margin-right: 6px; }
+select, button, input { font: inherit; color: inherit; }
+select { background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 4px 8px; max-width: 100%; }
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 6px; overflow: hidden; }
+.seg button { background: var(--surface); border: 0; padding: 4px 12px; cursor: pointer; color: var(--ink2); }
+.seg button + button { border-left: 1px solid var(--axis); }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); font-weight: 600; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--axis); margin: 10px 0 16px; overflow-x: auto; }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; cursor: pointer;
+  color: var(--ink2); white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.linkish { background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; text-decoration: underline; }
+
+/* ---- Cards and layout ------------------------------------------------ */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  margin: 0 0 16px; min-width: 0; }
+.split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.split > * { min-width: 0; }
+.head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.head h2 { margin: 0; }
+.figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 28px; align-items: start; margin-bottom: 6px; }
+.figs figure { margin: 0; min-width: 0; overflow-x: auto; }
+.figs figcaption { color: var(--ink2); font-size: 13px; max-width: 62ch; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+.tile b { display: block; font-size: 24px; font-weight: 600; }
+.tile span { color: var(--ink2); font-size: 13px; }
+.empty { padding: 26px 16px; text-align: center; color: var(--ink2); border: 1px dashed var(--axis); border-radius: 8px; }
+dl.defs { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 4px 16px; margin: 0 0 10px; font-size: 13px; }
+dl.defs dt { font-weight: 600; }
+dl.defs dd { margin: 0; color: var(--ink2); max-width: 90ch; }
+details { margin-top: 8px; }
+summary { cursor: pointer; font-weight: 600; }
+.lines { margin: 0 0 10px; font-size: 13px; }
+.lines div { margin-bottom: 3px; }
+.lines span.k { color: var(--ink2); }
+@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { dl.defs { grid-template-columns: minmax(0, 1fr); } dl.defs dt { margin-top: 6px; } .card { padding: 12px; } }
+
+/* ---- Tables ---------------------------------------------------------- */
+.scroll { overflow-x: auto; max-width: 100%; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 5px 10px 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-weight: 600; white-space: nowrap; border-bottom-color: var(--axis); }
+th button { background: none; border: 0; padding: 0; font-weight: 600; cursor: pointer; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.pick { cursor: pointer; }
+tr.pick:hover td { background: var(--raised); }
+tr.sel td { background: var(--select); }
+td.nowrap { white-space: nowrap; }
+tr.dsnote td { color: var(--ink2); font-size: 12px; padding-top: 0; border-bottom-color: var(--grid); }
+tr.nonote td { border-bottom-color: transparent; }
+.cell { display: inline-block; min-width: 64px; text-align: center; border: 0; background: none; padding: 1px 8px;
+  border-radius: 10px; cursor: pointer; font-variant-numeric: tabular-nums; color: var(--muted); }
+.cell.hit { background: var(--pill); color: var(--pill-ink); font-weight: 600; }
+.cell.na { cursor: help; }
+.icon { width: 16px; height: 16px; vertical-align: -3px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.icon.doc { color: var(--c6); }
+
+/* ---- Charts ---------------------------------------------------------- */
+.chart { display: block; max-width: 100%; touch-action: pan-y; }
+.chart text { font: 11px system-ui, sans-serif; fill: var(--muted); }
+.chart text.title { fill: var(--ink2); font-size: 12px; }
+.chart text.row { fill: var(--ink); font-size: 12px; }
+.chart .grid { stroke: var(--grid); stroke-width: 1; }
+.chart .axis { stroke: var(--axis); stroke-width: 1; }
+.chart .rule { stroke: var(--ink2); stroke-width: 1; stroke-dasharray: 4 3; }
+.chart .bandfill { fill: var(--band); }
+.chart .zone { fill: var(--zone); }
+.chart .dot { fill: var(--k); stroke: var(--surface); stroke-width: .6; }
+.chart .dot.big { stroke-width: 1.2; }
+.chart .ln { fill: none; stroke: var(--k); stroke-width: 2; stroke-linejoin: round; }
+.chart .ln.faint { stroke-width: 1.2; opacity: .55; stroke-dasharray: 5 3; }
+.chart .ring { fill: none; stroke: var(--ink); stroke-width: 2; pointer-events: none; }
+.chart .cross { stroke: var(--ink2); stroke-width: 1; pointer-events: none; }
+.chart .typ { fill: var(--quiet); opacity: .45; }
+.chart .typline { stroke: var(--quiet2); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+.k1 { --k: var(--c1); } .k2 { --k: var(--c2); } .k3 { --k: var(--c3); } .k4 { --k: var(--c4); }
+.k5 { --k: var(--c5); } .k6 { --k: var(--c6); } .k7 { --k: var(--c7); } .k8 { --k: var(--c8); }
+.kq { --k: var(--quiet); } .kq2 { --k: var(--quiet2); } .kink { --k: var(--ink); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 6px 0; }
+.legend button, .legend span.item { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid transparent;
+  border-radius: 12px; padding: 1px 8px; font-size: 12px; color: var(--ink2); }
+.legend button { cursor: pointer; }
+.legend button:hover { border-color: var(--axis); }
+.legend button[aria-pressed="false"] { opacity: .4; text-decoration: line-through; }
+.legend b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.sw { width: 12px; height: 12px; flex: none; }
+.sw .dot { fill: var(--k); }
+.sw .ln { stroke: var(--k); stroke-width: 2.5; }
+#tip { position: fixed; z-index: 10; pointer-events: none; display: none; max-width: min(380px, 92vw); background: var(--surface);
+  color: var(--ink); border: 1px solid var(--axis); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
+#tip b.t { display: block; margin-bottom: 2px; }
+#tip table { font-size: 12px; margin-top: 4px; }
+#tip td, #tip th { padding: 1px 8px 1px 0; border: 0; }
+#tip .off { color: var(--muted); }
+
+/* ---- Schematics (Methods figures) ------------------------------------ */
+.sk { display: block; width: 100%; height: auto; }
+.sk text { font: 12px system-ui, sans-serif; fill: var(--ink); }
+.sk text.m { fill: var(--ink2); }
+.sk text.s { font-size: 11px; fill: var(--ink2); }
+.sk .l { fill: none; stroke: var(--ink); stroke-width: 1.6; }
+.sk .t { fill: none; stroke: var(--axis); stroke-width: 1.2; }
+.sk .d { stroke-dasharray: 5 4; }
+.sk .a { stroke: var(--c1); } .sk .b { stroke: var(--c2); }
+.sk .fa { fill: var(--c1); } .sk .fb { fill: var(--c2); } .sk .fq { fill: var(--quiet); } .sk .fi { fill: var(--ink); }
+.sk .box { fill: var(--raised); stroke: var(--axis); }
+.sk .own { fill: none; stroke: var(--ink); stroke-width: 2; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0 0L10 5L0 10z" style="fill:var(--ink)"/></marker>
+</defs></svg>
+
+<div class="page">
+  <pre id="qa-errors" role="alert"></pre>
+  <h1>CNeuroMod alignment QA</h1>
+  <p class="lede" id="lede"></p>
+  <div class="controls">
+    <span><label for="ds-menu">Dataset</label><select id="ds-menu"></select></span>
+    <span><label id="colour-label">Colour the charts by</label><span class="seg" role="group" aria-labelledby="colour-label">
+      <button type="button" data-colour="result">Result</button><button type="button" data-colour="dataset">Dataset</button></span></span>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Checks" id="tabs"></div>
+  <main id="view" role="tabpanel" tabindex="-1"></main>
+</div>
+<div id="tip" role="status"></div>
+
+<!-- ==== Methods: static figures and wording, one template per tab. ====
+     <span data-rule="name"> is filled from meta.rules (data-as="pct" shows a share as a percentage). -->
+
+<template id="m-overview">
+  <div class="figs"><figure>
+    <svg class="sk" viewBox="0 0 520 132" style="max-width:640px;min-width:470px" role="img" aria-label="From the events file to a result: predictors, shift scan, vote">
+      <rect class="box" x="1" y="20" width="112" height="92" rx="8"/><text x="10" y="40" font-weight="600">Events file</text>
+      <text class="s" x="10" y="58">onsets, durations,</text><text class="s" x="10" y="72">responses; game</text><text class="s" x="10" y="86">recordings; other</text><text class="s" x="10" y="100">subjects' BOLD</text>
+      <path class="l" d="M116 66H132" marker-end="url(#arr)"/>
+      <rect class="box" x="136" y="20" width="112" height="92" rx="8"/><text x="145" y="40" font-weight="600">Predictors</text>
+      <text class="s" x="145" y="58">each one a signal</text><text class="s" x="145" y="72">expected in the</text><text class="s" x="145" y="86">brain, convolved</text><text class="s" x="145" y="100">with an HRF</text>
+      <path class="l" d="M251 66H267" marker-end="url(#arr)"/>
+      <rect class="box" x="271" y="20" width="112" height="92" rx="8"/><text x="280" y="40" font-weight="600">Shift scan</text>
+      <text class="s" x="280" y="58">each predictor slid</text><text class="s" x="280" y="72">along the run's</text><text class="s" x="280" y="86">BOLD: best shift</text><text class="s" x="280" y="100">and fit</text>
+      <path class="l" d="M386 66H402" marker-end="url(#arr)"/>
+      <rect class="box" x="406" y="20" width="112" height="92" rx="8"/><text x="415" y="40" font-weight="600">Vote</text>
+      <text class="s" x="415" y="58">the predictors</text><text class="s" x="415" y="72">that are reliable</text><text class="s" x="415" y="86">for the task give</text><text class="s" x="415" y="100">the run's result</text>
+    </svg></figure></div>
+  <p>Every check asks the same question: do the signals expected in the brain line up with this run's BOLD? The expected signals (the predictors) come from the run's events file, from the game recordings and from the other subjects who received the same stimulus. Each one is slid along the run's parcel time series to find the shift where it fits best; the checks then read those fits.</p>
+  <p>Start shift asks whether the BOLD started with the events, Pairing whether the events belong to this run, End of run whether both end together, Drift whether the timing holds along the run, and Repetitions (videogames) whether each play points at its own replay. Coverage lists what could not be checked.</p>
+  <p>A predictor only votes for a task when it is reliable there, and the result of a run always comes from all its reliable predictors together.</p>
+</template>
+
+<template id="m-predictors">
+  <dl class="defs">
+    <dt>Stimulus on/off</dt><dd>1 while a stimulus is shown or played, 0 otherwise ("game on/off" in the videogame datasets: 1 while a game is played, 0 between plays). Code: stim.</dd>
+    <dt>Button presses</dt><dd>A brief pulse at each response; in the videogame datasets, how many buttons go down on each frame of the game recording. Code: resp.</dd>
+    <dt>Other subjects</dt><dd>The mean BOLD of the other subjects for the same stimulus, parcel by parcel. It needs no events file, and it only exists where every subject received the same stimulus. Code: isc.</dd>
+    <dt>Conditions</dt><dd>The same on/off signal for each of the three conditions that cover the most time; the tables name the condition. Codes: cond1, cond2, cond3.</dd>
+    <dt>Screen luminance</dt><dd>Mean luminance of each frame of the game recording, with its in-game mean removed. Code: luminance.</dd>
+    <dt>Optical flow</dt><dd>Amount of motion on screen in each frame of the game recording. Code: flow.</dd>
+    <dt>Audio envelope</dt><dd>Loudness of the game sound in each frame of the game recording. Code: audio.</dd>
+  </dl>
+  <p class="note">A predictor only votes for a task when it is reliable there: at least <span data-rule="concentration_min" data-as="pct"></span> of the task's runs agree on the same best shift (within <span data-rule="shift_min_vols"></span> volumes), over at least <span data-rule="reliable_min_runs"></span> runs. A recording-based predictor is used for a run when it covers at least <span data-rule="availability_min" data-as="pct"></span> of the play time. The Reference table of the Start shift tab lists every predictor of every task with its agreement.</p>
+</template>
+
+<template id="m-shift">
+  <div class="figs">
+    <figure>
+      <svg class="sk" viewBox="0 0 460 306" style="max-width:460px" role="img" aria-label="The events become a predicted signal, which is slid along the measured signal; the correlation at each shift gives the fit by shift curve">
+        <text x="0" y="22">Events</text><text class="m" x="0" y="38">stimulus on/off</text>
+        <path class="l" d="M110 42H130V14H210V42H222V14H300V42H312V14H420V42H440"/>
+        <path class="l" d="M50 50V72" marker-end="url(#arr)"/><text class="m" x="60" y="66">convolved with an HRF</text>
+        <text x="0" y="98">Prediction</text><text class="m" x="0" y="114">predicted BOLD</text>
+        <path class="l" d="M110 116C135 116 135 88 160 88H215C222 88 222 96 229 96C236 96 236 88 243 88H305C312 88 312 96 319 96C326 96 326 88 333 88H425C440 88 440 116 455 116"/>
+        <path class="l" d="M118 140H156" marker-start="url(#arr)" marker-end="url(#arr)"/><text class="m" x="166" y="144">slide the prediction along the measured signal</text>
+        <text x="0" y="172">Measured</text><text class="m" x="0" y="188">parcels that follow it</text>
+        <path class="l a d" d="M110 190C135 190 135 162 160 162H215C222 162 222 170 229 170C236 170 236 162 243 162H305C312 162 312 170 319 170C326 170 326 162 333 162H425"/>
+        <path class="l" style="stroke:var(--ink2)" d="M110 192l8-2 8 3 8-2c22-3 22-27 44-29l9 2 9-3 9 2 9-2 9 3 9-2c7 1 7 8 14 8s7-8 14-9l9 2 9-3 9 2 9-2 9 3 9-2c7 1 7 8 14 8s7-8 14-9l9 2 9-3 9 2 9-2 9 3 9-2 9 2"/>
+        <text x="0" y="238">Fit by shift</text><text class="m" x="0" y="254">correlation r</text>
+        <path class="t" d="M110 288H455"/><path class="t" d="M250 216V288"/>
+        <path class="l" d="M110 283C200 281 250 273 270 243C285 218 300 218 315 243C335 275 380 281 455 283"/>
+        <circle cx="250" cy="266" r="4" style="fill:var(--surface);stroke:var(--ink);stroke-width:1.6"/><circle class="fi" cx="292.5" cy="224" r="4"/>
+        <path class="l" d="M252 208H289" marker-end="url(#arr)"/><text x="232" y="202">predictor shift</text>
+        <path class="t d" d="M256 266H344M298 224H344"/><path class="l" d="M338 262V229" marker-start="url(#arr)" marker-end="url(#arr)"/><text x="348" y="250">gain</text>
+        <text class="m" x="250" y="302" text-anchor="middle">usual shift</text><text class="m" x="455" y="302" text-anchor="end">shift of the events →</text>
+      </svg>
+      <figcaption><b>Predictor shift.</b> The events of a run become a predicted BOLD signal (dashed: the prediction where the events put it). It is slid along the measured signal of the parcels that follow that predictor best in the subject's other runs, and the correlation is computed at each shift. The shift where they match best, counted from the usual best shift of the task, is the predictor shift. The gain is how much better the fit is there than at the usual shift.</figcaption>
+    </figure>
+    <figure>
+      <svg class="sk" viewBox="0 0 440 250" style="max-width:440px" role="img" aria-label="Two clocks: the scanner's first volume and the task clock's t=0; within a session their offset is the same for every run unless one run started early or late">
+        <text class="m" x="0" y="14">One run</text>
+        <text x="0" y="52">Scanner</text><text class="m" x="110" y="28">volume 1: acquisition time</text>
+        <path class="l" d="M110 48H430M110 40V56M140 43V53M170 43V53M200 43V53M230 43V53M260 43V53M290 43V53M320 43V53M350 43V53M380 43V53M410 43V53"/>
+        <path class="t d" d="M110 56V92"/><text class="m" x="120" y="76">same instant</text><text class="m" x="430" y="76" text-anchor="end">d = acquisition time − t0</text>
+        <text x="0" y="100">Task clock</text><path class="t" d="M80 96H430"/><path class="l" d="M110 86V106"/>
+        <text class="m" x="110" y="124">t = 0 of the events on the task's own clock</text>
+        <text class="m" x="0" y="160">One session</text><text class="m" x="0" y="176">d of each run</text>
+        <text class="m" x="122" y="182">session median</text><path class="t" d="M120 190H430"/>
+        <circle class="fi" cx="170" cy="190" r="4.5"/><circle class="fb" cx="250" cy="222" r="4.5"/><circle class="fi" cx="330" cy="191" r="4.5"/><circle class="fi" cx="410" cy="189" r="4.5"/>
+        <path class="l" d="M268 194V219" marker-start="url(#arr)" marker-end="url(#arr)"/><text x="278" y="212">N × TR</text>
+        <text class="s" x="170" y="246" text-anchor="middle">run A</text><text class="s" x="250" y="246" text-anchor="middle">run B</text><text class="s" x="330" y="246" text-anchor="middle">run C</text><text class="s" x="410" y="246" text-anchor="middle">run D</text>
+      </svg>
+      <figcaption><b>Clock shift.</b> In a normal run, volume 1 and the events' t=0 happen at the same instant, so d only measures the offset between the two computers' clocks: it is the same for every run of a session. A run whose d sits N × TR away from the session median started its BOLD N volumes before or after t=0. Only events files that keep the task's own clock give a clock shift, and it needs at least three such runs in the session.</figcaption>
+    </figure>
+  </div>
+  <p><b>Combined result.</b> A predictor only votes for a task when it is reliable there. The result of a run always comes from all its reliable predictors together, because a real shift moves nearly all of them; the combined shift is the median of the predictors that back the result. A shift counts from <span data-rule="shift_min_vols"></span> volumes and is flagged when the predictors converge on at least <span data-rule="shift_flag_vols"></span> volumes. When the clocks show a shift, one predictor that finds the same shift confirms it. The menus next to the charts only change which predictor's curve is displayed.</p>
+  <p><b>Periodic designs.</b> When trials repeat at a fixed pace, a shift of a whole number of trials fits as well as the right one. Runs whose best shift lands on such an alias are not flagged; the Reference lists the aliases of each predictor.</p>
+</template>
+
+<template id="m-pair">
+  <div class="figs"><figure>
+    <svg class="sk" viewBox="0 0 460 180" style="max-width:460px" role="img" aria-label="Matrix of BOLD runs against events files: each run should fit its own events best; runs 2 and 3 fit each other's events">
+      <text class="s" x="131" y="14" text-anchor="middle">events 1</text><text class="s" x="171" y="14" text-anchor="middle">2</text><text class="s" x="211" y="14" text-anchor="middle">3</text><text class="s" x="251" y="14" text-anchor="middle">4</text>
+      <text x="0" y="44">BOLD run 1</text><text x="0" y="84">BOLD run 2</text><text x="0" y="124">BOLD run 3</text><text x="0" y="164">BOLD run 4</text>
+      <g class="fa">
+        <rect x="113" y="22" width="36" height="36" rx="3"/><rect x="153" y="22" width="36" height="36" rx="3" opacity=".15"/><rect x="193" y="22" width="36" height="36" rx="3" opacity=".1"/><rect x="233" y="22" width="36" height="36" rx="3" opacity=".2"/>
+        <rect x="113" y="62" width="36" height="36" rx="3" opacity=".12"/><rect x="153" y="62" width="36" height="36" rx="3" opacity=".2"/><rect x="233" y="62" width="36" height="36" rx="3" opacity=".1"/>
+        <rect x="113" y="102" width="36" height="36" rx="3" opacity=".2"/><rect x="193" y="102" width="36" height="36" rx="3" opacity=".15"/><rect x="233" y="102" width="36" height="36" rx="3" opacity=".12"/>
+        <rect x="113" y="142" width="36" height="36" rx="3" opacity=".1"/><rect x="153" y="142" width="36" height="36" rx="3" opacity=".18"/><rect x="193" y="142" width="36" height="36" rx="3" opacity=".12"/><rect x="233" y="142" width="36" height="36" rx="3"/>
+      </g>
+      <rect class="fb" x="193" y="62" width="36" height="36" rx="3"/><rect class="fb" x="153" y="102" width="36" height="36" rx="3"/>
+      <rect class="own" x="113" y="22" width="36" height="36" rx="3"/><rect class="own" x="153" y="62" width="36" height="36" rx="3"/><rect class="own" x="193" y="102" width="36" height="36" rx="3"/><rect class="own" x="233" y="142" width="36" height="36" rx="3"/>
+      <rect class="own" x="290" y="30" width="14" height="14" rx="2"/><text x="312" y="42">the run's own events</text>
+      <rect class="fa" x="290" y="56" width="14" height="14" rx="2"/><text x="312" y="68">own events fit best</text>
+      <rect class="fb" x="290" y="82" width="14" height="14" rx="2"/><text x="312" y="94">another run's fit better</text>
+      <text class="s" x="290" y="124">Runs 2 and 3 fit each other's</text><text class="s" x="290" y="138">events: their events files or</text><text class="s" x="290" y="152">labels are swapped.</text>
+    </svg>
+    <figcaption><b>Cross-pairing.</b> Each BOLD run is fitted, at its best shift, with the events of every comparable run: same task, same or neighbouring session, and not an identical design. Its own events should fit best. When another run's events fit better, the events file or the run label probably belongs to another run.</figcaption>
+  </figure></div>
+  <p><b>Score.</b> For each predictor, the margin is the fit with the run's own events minus the best fit with another run's. Margins are standardised per task and predictor (median and spread over the task's runs) and averaged over the reliable predictors: the pairing score.</p>
+  <p><b>Flag.</b> A run is flagged when the score is below <span data-rule="pair_z"></span>, its predictors (all but one at most) prefer another run and agree on which one, and neither stimulus on/off nor button presses, the two predictors that tell runs apart best, still prefers the run's own events. The result always combines all reliable predictors; the predictor menu only changes what the matrix shows.</p>
+  <p><b>Validation.</b> Every run is given, in simulation, the events of another run; the Reference gives the share of these swaps that is caught.</p>
+</template>
+
+<template id="m-end">
+  <div class="figs"><figure>
+    <svg class="sk" viewBox="0 0 460 150" style="max-width:460px" role="img" aria-label="A bar for the BOLD and a bar for the events on the same time axis; the tail is the BOLD left after the last event">
+      <text x="0" y="30">BOLD</text><rect class="fa" x="70" y="16" width="330" height="20" rx="3"/><text class="s" x="76" y="12">volumes × TR</text>
+      <text x="0" y="62">Events</text><rect class="fq" x="70" y="48" width="296" height="20" rx="3"/>
+      <path class="l" d="M366 78H400M366 72V84M400 72V84"/><text x="383" y="98" text-anchor="middle">tail</text>
+      <text class="s" x="412" y="62">normal</text>
+      <text x="0" y="132">Events</text><rect class="fb" x="70" y="118" width="372" height="20" rx="3"/>
+      <path class="t d" d="M400 8V146"/><text class="s" x="320" y="112">events past the BOLD end</text>
+    </svg>
+    <figcaption><b>Tail.</b> The BOLD lasts its number of volumes × TR. The events end with the end of the last event. The tail is the BOLD end minus the events end: a few seconds is normal, since the scan is stopped after the task ends.</figcaption>
+  </figure></div>
+  <p>No brain signal is involved, so this check runs wherever the events files have content. When the clocks and the brain agree that the BOLD started early or late, the events are first moved by that shift, so that the tail is measured in BOLD time.</p>
+  <p><b>What it means.</b> Events past the end are not an error by themselves, but the end of the last event has no BOLD to model. A long tail is usually a scan stopped late; it can also mean that events are missing from the file. A run much shorter than the other runs of the same stimulus was probably interrupted.</p>
+</template>
+
+<template id="m-drift">
+  <div class="figs"><figure>
+    <svg class="sk" viewBox="0 0 460 180" style="max-width:460px" role="img" aria-label="Sliding windows along the run; the best shift of each window stays flat in a steady run and slopes or steps in a run that drifts or jumps">
+      <text class="m" x="0" y="66">best shift</text><text class="m" x="0" y="80">per window</text>
+      <path class="t" d="M80 10V120H450"/><path class="t d" d="M80 66H450"/>
+      <path class="l a" d="M96 67L130 65L164 67L198 66L232 65L266 67L300 66L334 65L368 67L402 66L436 66"/>
+      <path class="l b" d="M96 96L130 91L164 86L198 79L232 73L266 66L300 59L334 53L368 46L402 40L436 33"/>
+      <path class="l d" style="stroke:var(--ink2)" d="M96 82H250V40H436"/>
+      <g class="fq"><rect x="80" y="130" width="120" height="7" rx="3"/><rect x="114" y="140" width="120" height="7" rx="3"/><rect x="148" y="150" width="120" height="7" rx="3"/><rect x="182" y="130" width="120" height="7" rx="3" opacity=".6"/><rect x="330" y="140" width="120" height="7" rx="3"/></g>
+      <text class="s" x="282" y="158">…</text><text class="s" x="80" y="174">overlapping windows along the run</text>
+      <text class="s a" x="300" y="80" style="fill:var(--ink2)">steady</text><text class="s" x="372" y="62">drift</text><text class="s" x="200" y="36">jump</text>
+    </svg>
+    <figcaption><b>Shift along the run.</b> The run is cut into overlapping windows of <span data-rule="drift_window_vols"></span> volumes, one every <span data-rule="drift_step_vols"></span> volumes. In each, the best shift is searched within ±<span data-rule="drift_search_s"></span> s of the run's own best shift. A run whose events drift or jump against the BOLD shows a slope or a step instead of a flat line.</figcaption>
+  </figure></div>
+  <p><b>Score.</b> For each predictor, a line is fitted to the window shifts (weighted by the fit of each window); its slope is in volumes per 10 minutes. Slopes are standardised per task and predictor and averaged over the reliable predictors: the drift score.</p>
+  <p><b>Flag.</b> A run is flagged when the score reaches ±<span data-rule="drift_z"></span>, its predictors (all but one at most) slope the same way, and the mean slope is at least <span data-rule="slope_min"></span> volumes per 10 minutes. The result always combines all reliable predictors; the predictor menu only changes which curve is in front.</p>
+  <p><b>Validation.</b> In a sample of runs, the events of the second half were moved by <span data-rule="simulated_vols"></span> volumes (a jump), or moved progressively by the same amount over the run (a drift). The Reference gives the share caught, and the share of unchanged runs that the rule flags: flagged runs are candidates to look at, not proof of a drift.</p>
+</template>
+
+<template id="m-reps">
+  <div class="figs"><figure>
+    <svg class="sk" viewBox="0 0 460 150" style="max-width:460px" role="img" aria-label="Slots between the onsets of successive plays in the events; each replay must fill its slot up to the usual gap">
+      <text x="0" y="30">Events</text><text class="m" x="0" y="46">play onsets</text>
+      <path class="l" d="M100 34H450M110 22V46M220 22V46M350 22V46"/>
+      <text class="s" x="165" y="18" text-anchor="middle">slot of play 1</text><text class="s" x="285" y="18" text-anchor="middle">slot of play 2</text>
+      <text x="0" y="82">Replays</text><text class="m" x="0" y="98">frames ÷ frame rate</text>
+      <rect class="fa" x="110" y="68" width="96" height="20" rx="3"/><rect class="fb" x="220" y="68" width="84" height="20" rx="3"/>
+      <path class="t d" d="M220 46V112M350 46V112M206 60V112M304 60V112M336 60V112"/>
+      <path class="l" d="M206 104H220"/><text class="s" x="213" y="124" text-anchor="middle">gap</text>
+      <path class="l" d="M306 104H334" marker-start="url(#arr)" marker-end="url(#arr)"/><path class="l" d="M336 104H350"/>
+      <text class="s" x="320" y="124" text-anchor="middle">slot deviation</text><text class="s" x="345" y="138">gap</text>
+      <text class="s" x="110" y="144">fills its slot</text><text class="s" x="220" y="144">too short for its slot</text>
+    </svg>
+    <figcaption><b>Slot.</b> In the events, a play's slot runs from its onset to the next play's. Its replay (frames ÷ frame rate) fills it, followed by the session's usual gap. A replay that belongs to another play of the same level is usually longer or shorter than the slot.</figcaption>
+  </figure></div>
+  <p><b>Candidates.</b> For each play, the replays of every other play of the same level in the same session are the candidates that could have been mixed up with its own.</p>
+  <p><b>Slot.</b> The slot deviation is the slot minus the replay's length minus the session's usual gap. A play is flagged when its own replay misses its slot by more than <span data-rule="slot_tolerance_s"></span> s. Two plays whose replays each fill the other's slot are reported as swapped. When most plays of a session miss their slot, the session has irregular gaps, and its plays are noted quietly. The last play of a run has no slot.</p>
+  <p><b>Brain.</b> Replays of the same length cannot be told apart by the slot. Inside the run, only this play's part of each predictor (button presses, screen luminance, optical flow, audio envelope) is replaced by the candidate's, and the fit with the BOLD is compared with the fit of the play's own replay. A candidate that fills the slot is preferred when the median standardised gain reaches <span data-rule="replay_z"></span>, all predictors but one at most improve, and button presses do not get worse. A play is a small part of a run, so this evidence is weak.</p>
+  <p><b>Validation.</b> Every play is given, in simulation, each other replay of its level in the session; the Reference gives the share of these swaps that is caught.</p>
+</template>
+
+<template id="m-coverage">
+  <div class="figs"><figure>
+    <svg class="sk" viewBox="0 0 460 120" style="max-width:460px" role="img" aria-label="A run needs three files to be checked: the BOLD run, its events file and its parcel time series">
+      <rect class="box" x="1" y="14" width="124" height="44" rx="8"/><text x="12" y="33" font-weight="600">BOLD run</text><text class="s" x="12" y="49">in the BIDS dataset</text>
+      <rect class="box" x="1" y="68" width="124" height="44" rx="8"/><text x="12" y="87" font-weight="600">Events file</text><text class="s" x="12" y="103">with rows in it</text>
+      <rect class="box" x="150" y="41" width="130" height="44" rx="8"/><text x="161" y="60" font-weight="600">Parcel time series</text><text class="s" x="161" y="76">same run, same label</text>
+      <path class="l" d="M127 36C140 36 138 56 148 58M127 90C140 90 138 70 148 68M282 63H306" marker-end="url(#arr)"/>
+      <rect class="box" x="310" y="30" width="148" height="66" rx="8"/><text x="321" y="50" font-weight="600">Run checked</text><text class="s" x="321" y="66">brain checks also need a</text><text class="s" x="321" y="80">predictor that is reliable</text>
+    </svg>
+    <figcaption><b>What a run needs.</b> A run is checked when its BOLD run, an events file with content and its parcel time series all exist and carry the same labels. The brain checks also need at least one predictor that is reliable for the task.</figcaption>
+  </figure></div>
+  <p>This tab lists the runs for which something is missing, with the reason. A run without events can still be checked through the other subjects where every subject received the same stimulus; End of run always needs the events. A reason shared by many runs of a dataset is given once, as a note on the dataset.</p>
+</template>
+
+<script id="qa-data" type="application/json">__QA_ALIGN_DATA__</script>
+<script>
+'use strict';
+
+/* ---- 0. Runtime errors are written into the page ----------------------- */
+function reportError(message) {
+  const box = document.getElementById('qa-errors');
+  box.classList.add('shown');
+  box.textContent += message + '\n';
+}
+window.onerror = (message, source, line, column) => reportError(`${message} (line ${line}:${column})`);
+window.addEventListener('unhandledrejection', event => reportError(String(event.reason)));
+
+/* ---- 1. DOM and formatting helpers -------------------------------------- */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const $ = (selector, root = document) => root.querySelector(selector);
+
+function setAttrs(node, attrs) {
+  for (const [name, value] of Object.entries(attrs || {})) {
+    if (value === null || value === undefined || value === false) continue;
+    if (name.startsWith('on')) node.addEventListener(name.slice(2), value);
+    else node.setAttribute(name, value === true ? '' : value);
+  }
+}
+function append(node, children) {
+  for (const child of children.flat(Infinity)) {
+    if (child === null || child === undefined || child === false || child === '') continue;
+    node.append(child.nodeType ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  setAttrs(node, attrs);
+  return append(node, children);
+}
+function S(tag, attrs, ...children) {
+  const node = document.createElementNS(SVG_NS, tag);
+  setAttrs(node, attrs);
+  return append(node, children);
+}
+const has = value => value !== null && value !== undefined;
+const fmt = (value, digits = 1) => has(value) ? Number(value).toFixed(digits).replace('-', '−') : '';
+const signed = (value, digits = 1) => has(value) ? (value > 0 ? '+' : '') + fmt(value, digits) : '';
+const percent = value => has(value) ? `${+Number(value).toFixed(1)}%` : 'n/a';
+const count = value => Number(value).toLocaleString('en-US');
+const plural = (n, word) => `${count(n)} ${word}${n === 1 ? '' : 's'}`;
+const median = values => {
+  const sorted = values.slice().sort((a, b) => a - b), mid = sorted.length >> 1;
+  return sorted.length ? (sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2) : null;
+};
+const mean = values => values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
+const peak = values => values.reduce((most, v) => Math.max(most, Math.abs(v)), 0);
+/** The size that 97% of the values stay under: a frame that a few extreme runs do not stretch. */
+const usualPeak = values => {
+  const sizes = values.map(Math.abs).sort((a, b) => a - b);
+  return sizes.length ? sizes[Math.floor((sizes.length - 1) * .97)] : 0;
+};
+
+/** A stable number in [-1, 1] from a string, to spread dots that would overlap. */
+function jitter(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+  return ((hash >>> 0) % 2001) / 1000 - 1;
+}
+/** Calls `handler` at most once per animation frame, with the latest event. */
+function throttled(handler) {
+  let pending = null;
+  return event => {
+    const idle = pending === null;
+    pending = event;
+    if (idle) requestAnimationFrame(() => { const latest = pending; pending = null; handler(latest); });
+  };
+}
+
+/* ---- 2. Data and indexes (built once) ------------------------------------ */
+const DATA = JSON.parse($('#qa-data').textContent);
+const MISSING = -128;                 // int8 value of a missing sample in the encoded series
+const RULES = new Map(DATA.meta.rules.map(entry => [entry.name, entry]));
+const rule = name => RULES.has(name) ? RULES.get(name).value : NaN;
+const OVERVIEW = new Map(DATA.overview.map(row => [row.dataset, row]));
+const DATASETS = DATA.overview.map(row => row.dataset);
+const RUN = new Map(), RUNS_BY_DS = new Map(DATASETS.map(name => [name, []]));
+for (const run of DATA.runs) {
+  run.key = `${run.ds}|${run.id}`;
+  RUN.set(run.key, run);
+  if (!RUNS_BY_DS.has(run.ds)) RUNS_BY_DS.set(run.ds, []);
+  RUNS_BY_DS.get(run.ds).push(run);
+}
+const PRED = new Map(DATA.predictors.map(row => [`${row.dataset}|${row.task}|${row.pred}`, row]));
+const FINDING = new Map(DATA.findings.map(row => [`${row.check}|${row.dataset}|${row.run}`, row]));
+const PLAY = new Map();
+for (const [dataset, reps] of Object.entries(DATA.reps)) {
+  for (const play of reps.plays) {
+    play.ds = dataset;
+    play.key = `${dataset}|${play.id}`;
+    play.flag = play.flag || 'fits';
+    PLAY.set(play.key, play);
+  }
+}
+const isGame = dataset => (OVERVIEW.get(dataset) || {}).kind === 'videogame';
+/** Repetition time of a dataset, from the spacing of its drift windows. */
+const trOf = dataset => {
+  const drift = DATA.drift[dataset];
+  return drift && drift.dt_s ? drift.dt_s / rule('drift_step_vols') : 1.49;
+};
+function decode(base64) {
+  const binary = atob(base64), values = new Int8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) values[i] = binary.charCodeAt(i);
+  return values;
+}
+const MARGINS = new Map();            // dataset -> Map(run id -> {predictor: margin row}), built on demand
+function marginsOf(dataset) {
+  if (!MARGINS.has(dataset)) {
+    const byRun = new Map();
+    for (const row of (DATA.pairing[dataset] || {}).margins || []) {
+      if (!byRun.has(row.id)) byRun.set(row.id, {});
+      byRun.get(row.id)[row.pred] = row;
+    }
+    MARGINS.set(dataset, byRun);
+  }
+  return MARGINS.get(dataset);
+}
+
+/* ---- 3. Predictors, results and colours ----------------------------------- */
+const PRED_ORDER = ['stim', 'resp', 'isc', 'cond1', 'cond2', 'cond3', 'luminance', 'flow', 'audio'];
+// conditions (tasks) and recording features (videogames) never meet in one run: they share three colours
+const PRED_CLASS = {stim: 'k1', resp: 'k2', isc: 'k3', cond1: 'k4', cond2: 'k5', cond3: 'k6',
+                    luminance: 'k4', flow: 'k5', audio: 'k6'};
+function predName(pred, dataset, task) {
+  if (pred === 'stim' && isGame(dataset)) return 'game on/off';
+  const row = PRED.get(`${dataset}|${task}|${pred}`);
+  const name = DATA.meta.predictor_names[pred] || pred;
+  return row && row.label ? `${name} (${row.label})` : name;
+}
+const predsOf = run => PRED_ORDER.filter(pred => run.p && run.p[pred]);
+const isReliable = (run, pred) => (PRED.get(`${run.ds}|${run.task}|${pred}`) || {}).reliable === true;
+const reliablePreds = run => predsOf(run).filter(pred => isReliable(run, pred));
+
+/* Every result a check can give: [value, colour class, meaning]. Classes kq/kq2 are the quiet,
+   unflagged results; any other class is a flagged result and keeps its colour on every tab. */
+const CHECKS = {
+  shift: {label: 'Start shift', field: 'fs', flags: [
+    ['shift: clock + brain', 'k2', 'The clocks show a shift and at least one predictor finds the same shift.'],
+    ['shift: most predictors', 'k1', 'Three or more predictors, all but one at most, find the same shift.'],
+    ['shift: both predictors', 'k3', 'The run has two predictors that count, and both find the same shift.'],
+    ['shift: one predictor', 'k4', 'The run has one predictor that counts; it finds a shift with a clear gain in fit.'],
+    ['shift: clock only', 'k7', 'The clocks show a shift that the brain signal cannot confirm.'],
+    ['clocks and brain disagree', 'k5', 'The clocks and the predictors both see a shift, of different sizes.'],
+    ['no fit to its stimulus', 'k8', 'Every predictor fits far below its usual fit: the events may belong to another run.'],
+    ['aligned', 'kq', 'No shift.'],
+    ['aligned (shift in few predictors)', 'kq2', 'Only a minority of the predictors see a shift: noted, not flagged.'],
+    ['aligned (periodic design)', 'kq2', 'The best shift is a whole number of trials away: an alias of the design, not a shift.'],
+    ['aligned (weak brain signal)', 'kq2', 'No predictor that counts fits well enough to judge the run.']]},
+  pair: {label: 'Pairing', field: 'fp', flags: [
+    ['events fit another run better', 'k2', 'The predictors together prefer the events of another run, and agree on which one.'],
+    ['fits its own events', 'kq', 'The run fits its own events at least as well as any other.']]},
+  end: {label: 'End of run', field: 'fe', flags: [
+    ['events past the BOLD end', 'k8', 'The events end more than 2 volumes after the BOLD.'],
+    ['cut at the volume limit', 'k7', 'The events go on after the BOLD, which stopped at the longest run length of the dataset, where several runs stop.'],
+    ['run shorter than the others of its stimulus', 'k1', 'The run has far fewer volumes than the other runs of the same stimulus.'],
+    ['unusual tail for the task', 'k4', 'The tail is unlike the tails of the other runs of the task.'],
+    ['ok', 'kq', 'The run ends like the other runs of its task.'],
+    ['ok (task version)', 'kq2', 'An unusual tail shared by several events files of the task: a version of the task, not an error.'],
+    ['no events end', 'kq2', 'The events file has no content, so the tail cannot be measured.']]},
+  drift: {label: 'Drift', field: 'fd', flags: [
+    ['drift or jump', 'k2', 'The shift changes along the run, and the predictors agree on the direction.'],
+    ['steady', 'kq', 'The shift stays the same from the start of the run to its end.']]},
+  reps: {label: 'Repetitions', field: 'flag', flags: [
+    ['replay does not fit its slot', 'k8', 'The replay is longer or shorter than the slot of the play in the events.'],
+    ['another replay fits the brain better', 'k1', 'Another replay of the same level fills the slot as well and fits the brain better.'],
+    ['replays swapped between two plays', 'k7', 'Two plays whose replays each fill the slot of the other.'],
+    ['irregular gaps in the whole session', 'kq2', 'Most plays of the session miss their slot: the gaps are irregular, the replays are not misattributed.'],
+    ['fits', 'kq', 'The replay fills its slot.']]},
+};
+const STYLE = {};
+for (const [key, check] of Object.entries(CHECKS)) {
+  STYLE[key] = new Map(check.flags.map(([value, cls, text]) => [value, {cls, text, flagged: !cls.startsWith('kq')}]));
+}
+const styleOf = (checkKey, value) => STYLE[checkKey].get(value) || {cls: 'kq2', text: '', flagged: false};
+const isFlagged = (checkKey, row) => styleOf(checkKey, row[CHECKS[checkKey].field]).flagged;
+const findingOf = (checkKey, row) => FINDING.get(`${CHECKS[checkKey].label}|${row.ds}|${row.id}`);
+
+// 8 hues x 3 shapes give every dataset its own mark; the hue alone never carries the identity
+const SHAPES = ['circle', 'square', 'diamond'];
+const DS_STYLE = new Map(DATASETS.map((name, i) => [name, {cls: `k${i % 8 + 1}`, shape: SHAPES[Math.floor(i / 8) % 3]}]));
+
+/* ---- 4. State, URL hash and selection ------------------------------------- */
+const TABS = [['overview', 'Overview'], ['shift', 'Start shift'], ['pair', 'Pairing'], ['end', 'End of run'],
+              ['drift', 'Drift'], ['reps', 'Repetitions'], ['coverage', 'Coverage']];
+const state = {tab: 'overview', ds: '', colour: 'result', run: '', play: '', pred: 'all'};
+const ui = {mode: {}, sort: {}, limit: {}, hidden: {}, filter: {check: '', status: ''}};
+let view = null;                      // what the visible tab needs to redraw or update
+let lastHash = '';
+
+function readHash() {
+  const query = new URLSearchParams(location.hash.slice(1));
+  state.tab = TABS.some(tab => tab[0] === query.get('tab')) ? query.get('tab') : 'overview';
+  state.ds = OVERVIEW.has(query.get('ds')) ? query.get('ds') : '';
+  state.colour = query.get('colour') === 'dataset' ? 'dataset' : 'result';
+  state.run = query.get('run') || '';
+  state.play = query.get('play') || '';
+  state.pred = query.get('pred') || 'all';
+}
+function writeHash() {
+  const query = new URLSearchParams({tab: state.tab});
+  if (state.ds) query.set('ds', state.ds);
+  if (state.colour === 'dataset') query.set('colour', 'dataset');
+  if (state.run) query.set('run', state.run);
+  if (state.play) query.set('play', state.play);
+  if (state.pred !== 'all') query.set('pred', state.pred);
+  lastHash = '#' + query.toString();
+  if (lastHash === location.hash) return;
+  try { history.replaceState(null, '', lastHash); } catch (error) { location.hash = lastHash; }
+}
+function go(change) {
+  Object.assign(state, change);
+  render();
+}
+const scopeDatasets = () => state.ds ? [state.ds] : DATASETS;
+const scopeRuns = () => state.ds ? RUNS_BY_DS.get(state.ds) || [] : DATA.runs;
+const rowName = row => state.ds ? row.id : `${row.ds} ${row.id}`;
+
+/** A fresh view: `kind` is the state field ('run' or 'play') that holds the selection of this tab. */
+function newView(kind) {
+  const made = {kind, draws: [], onSelect: []};
+  made.pick = key => {
+    state[kind] = key;
+    writeHash();
+    made.onSelect.forEach(update => update(key));
+  };
+  return made;
+}
+/** Keeps the selection when it is among `rows`, otherwise selects the first flagged row. */
+function resolveSelection(kind, rows, flagged) {
+  if (!rows.some(row => row.key === state[kind])) {
+    const first = rows.find(flagged) || rows[0];
+    state[kind] = first ? first.key : '';
+  }
+}
+
+/* ---- 5. Tooltip ------------------------------------------------------------ */
+const tipBox = $('#tip');
+function showTip(event, content) {
+  tipBox.replaceChildren(content);
+  tipBox.style.display = 'block';
+  const width = tipBox.offsetWidth, height = tipBox.offsetHeight;
+  let x = event.clientX + 14, y = event.clientY + 14;
+  if (x + width > innerWidth - 8) x = Math.max(8, event.clientX - width - 14);
+  if (y + height > innerHeight - 8) y = Math.max(8, event.clientY - height - 14);
+  tipBox.style.left = x + 'px';
+  tipBox.style.top = y + 'px';
+}
+function hideTip() { tipBox.style.display = 'none'; }
+window.addEventListener('scroll', hideTip, {passive: true});
+window.addEventListener('keydown', event => { if (event.key === 'Escape') hideTip(); });
+
+/** Tooltip of a run: its result for the check, then what each predictor says. */
+function runTip(run, checkKey, lines) {
+  const third = {shift: ['gain', 2, 3], drift: ['slope', 3, 2], pair: ['margin', null, 3]}[checkKey];
+  const margins = checkKey === 'pair' ? marginsOf(run.ds).get(run.id) || {} : null;
+  const box = el('div', {}, el('b', {class: 't'}, `${run.ds} · ${run.id}`),
+                 el('div', {}, 'Result: ', run[CHECKS[checkKey].field] || 'not judged'),
+                 (lines || []).map(line => el('div', {}, line)));
+  const preds = predsOf(run);
+  if (!preds.length) return box;
+  const rows = preds.map(pred => {
+    const [shift, fit] = run.p[pred], counts = isReliable(run, pred);
+    let extra = third && third[1] !== null ? run.p[pred][third[1]] : null;
+    if (margins && margins[pred]) extra = margins[pred].own - margins[pred].best_other;
+    return el('tr', {class: counts ? null : 'off'}, el('td', {}, predName(pred, run.ds, run.task)),
+              el('td', {class: 'r'}, signed(shift)), el('td', {class: 'r'}, fmt(fit, 2)),
+              third && el('td', {class: 'r'}, has(extra) ? signed(extra, third[2]) : ''));
+  });
+  box.append(el('table', {}, el('tr', {}, el('th', {}, 'Predictor'), el('th', {class: 'r'}, 'shift, vol.'),
+                                el('th', {class: 'r'}, 'fit r'), third && el('th', {class: 'r'}, third[0])), rows));
+  if (preds.some(pred => !isReliable(run, pred))) box.append(el('div', {class: 'off'}, 'Grey: does not count for this task.'));
+  return box;
+}
+
+/* ---- 6. Chart primitives --------------------------------------------------- */
+const linear = (lo, hi, from, to) => value => from + (value - lo) * (to - from) / (hi - lo);
+function niceTicks(lo, hi, target) {
+  const raw = (hi - lo) / target, magnitude = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(m => m * magnitude).find(s => s >= raw);
+  const ticks = [];
+  for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + step * 1e-6; v += step) ticks.push(+v.toFixed(6));
+  return ticks;
+}
+const tickText = value => String(value).replace('-', '−');
+const px = value => +value.toFixed(1);
+
+/** One mark: circle, square, diamond, or a triangle ('tri-left', ...) for a value beyond the frame. */
+function mark(shape, x, y, r, cls) {
+  x = px(x); y = px(y);
+  if (shape === 'square') return S('rect', {x: px(x - r * .9), y: px(y - r * .9), width: px(r * 1.8), height: px(r * 1.8), class: cls});
+  if (shape === 'diamond') {
+    const d = px(r * 1.25);
+    return S('path', {d: `M${x} ${y - d}L${x + d} ${y}L${x} ${y + d}L${x - d} ${y}z`, class: cls});
+  }
+  if (shape.startsWith('tri-')) {
+    const angle = {right: 0, down: 90, left: 180, up: 270}[shape.slice(4)], d = px(r * 1.3);
+    return S('path', {d: `M${d} 0L${-d} ${d}L${-d} ${-d}z`, transform: `translate(${x} ${y}) rotate(${angle})`, class: cls});
+  }
+  return S('circle', {cx: x, cy: y, r, class: cls});
+}
+function swatch(item) {
+  const icon = S('svg', {class: `sw ${item.cls}`, viewBox: '0 0 12 12', 'aria-hidden': 'true'});
+  icon.append(item.line ? S('path', {d: 'M0 6H12', class: 'ln'}) : mark(item.shape || 'circle', 6, 6, 4.5, 'dot'));
+  return icon;
+}
+/** A legend; with a `hidden` set its entries are buttons that show or hide a category. */
+function legend(items, hidden, onToggle) {
+  return el('div', {class: 'legend'}, items.map(item => {
+    const inner = [swatch(item), item.label, has(item.count) && el('b', {}, count(item.count))];
+    if (!hidden) return el('span', {class: 'item'}, inner);
+    return el('button', {type: 'button', 'aria-pressed': String(!hidden.has(item.key)), title: 'Show or hide in the chart',
+                         onclick: () => { if (!hidden.delete(item.key)) hidden.add(item.key); onToggle(); }}, inner);
+  }));
+}
+
+/** Gridlines, tick labels and titles of the axes. `y` is left out for charts with rows. */
+function drawAxes(svg, box, x, y) {
+  const sx = linear(x.lo, x.hi, box.l, box.r);
+  for (const tick of niceTicks(x.lo, x.hi, Math.max(3, Math.round((box.r - box.l) / 80)))) {
+    svg.append(S('path', {class: 'grid', d: `M${px(sx(tick))} ${box.t}V${box.b}`}),
+               S('text', {x: px(sx(tick)), y: box.b + 15, 'text-anchor': 'middle'}, tickText(tick)));
+  }
+  svg.append(S('path', {class: 'axis', d: `M${box.l} ${box.b}H${box.r}`}),
+             S('text', {class: 'title', x: (box.l + box.r) / 2, y: box.b + 34, 'text-anchor': 'middle'}, x.label));
+  if (!y) return;
+  const sy = linear(y.lo, y.hi, box.b, box.t);
+  for (const tick of niceTicks(y.lo, y.hi, Math.max(3, Math.round((box.b - box.t) / 42)))) {
+    svg.append(S('path', {class: 'grid', d: `M${box.l} ${px(sy(tick))}H${box.r}`}),
+               S('text', {x: box.l - 6, y: px(sy(tick)) + 4, 'text-anchor': 'end'}, tickText(tick)));
+  }
+  const middle = (box.t + box.b) / 2;
+  svg.append(S('text', {class: 'title', x: 12, y: middle, 'text-anchor': 'middle', transform: `rotate(-90 12 ${middle})`}, y.label));
+}
+
+/** Spreads the dots of each row that share a horizontal position, up and down from the row's centre. */
+function swarm(placed, rowHeight) {
+  const step = 4.6, room = rowHeight / 2 - 4, bins = new Map();
+  for (const dot of placed) {
+    const key = `${dot.p.row}:${Math.round(dot.x / step)}`;
+    if (!bins.has(key)) bins.set(key, []);
+    bins.get(key).push(dot);
+  }
+  for (const dots of bins.values()) {
+    dots.sort((a, b) => (b.p.strong ? 1 : 0) - (a.p.strong ? 1 : 0));
+    const gap = Math.min(step, room / Math.max(1, Math.ceil((dots.length - 1) / 2)));
+    dots.forEach((dot, i) => { dot.y += (i % 2 ? -1 : 1) * Math.ceil(i / 2) * gap; });
+  }
+}
+
+/** A chart of one dot per run or play.
+    o.rows [{label, band: [lo, hi], mid}] gives a strip chart (dots spread inside each row);
+    otherwise o.y gives a scatter. Points: {x, y | row, key, cls, shape, strong, tip()}.
+    Values beyond the frame sit on its edge as triangles. Returns {select(key)}. */
+function dotChart(host, o) {
+  host.replaceChildren();
+  const width = Math.max(280, host.clientWidth), rows = o.rows, rowHeight = o.rowHeight || 36;
+  const longest = rows ? Math.max(4, ...rows.map(row => row.label.length)) : 0;
+  const left = rows ? Math.min(Math.round(width * .3), 16 + Math.round(longest * 6.8)) : 54;
+  const box = {l: left, r: width - 14, t: 12, b: rows ? 12 + rows.length * rowHeight : (o.height || 330) - 44};
+  const height = box.b + 44;
+  const svg = S('svg', {class: 'chart', width, height, viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': o.aria});
+  const sx = linear(o.x.lo, o.x.hi, box.l, box.r), sy = rows ? null : linear(o.y.lo, o.y.hi, box.b, box.t);
+  const xAt = value => px(clamp(sx(value), box.l, box.r));
+
+  for (const shade of o.shades || []) {
+    const x0 = has(shade.x0) ? xAt(shade.x0) : box.l, x1 = has(shade.x1) ? xAt(shade.x1) : box.r;
+    svg.append(S('rect', {class: shade.cls, x: x0, y: box.t, width: Math.max(0, x1 - x0), height: box.b - box.t}));
+  }
+  drawAxes(svg, box, o.x, rows ? null : o.y);
+  (rows || []).forEach((row, i) => {
+    const centre = box.t + (i + .5) * rowHeight, room = Math.floor((left - 12) / 6.8);
+    const text = row.label.length > room ? row.label.slice(0, room - 1) + '…' : row.label;
+    if (i) svg.append(S('path', {class: 'grid', d: `M${box.l} ${box.t + i * rowHeight}H${box.r}`}));
+    svg.append(S('text', {class: 'row', x: left - 8, y: centre + 4, 'text-anchor': 'end'}, text, S('title', {}, row.label)));
+    if (row.band) {
+      svg.append(S('rect', {class: 'typ', x: xAt(row.band[0]), y: centre - rowHeight / 2 + 3,
+                            width: Math.max(1, xAt(row.band[1]) - xAt(row.band[0])), height: rowHeight - 6}));
+    }
+  });
+  for (const line of o.vlines || []) {
+    if (line.x < o.x.lo || line.x > o.x.hi) continue;
+    svg.append(S('path', {class: 'rule', d: `M${xAt(line.x)} ${box.t}V${box.b}`}));
+  }
+  for (const line of o.hlines || []) svg.append(S('path', {class: 'rule', d: `M${box.l} ${px(sy(line.y))}H${box.r}`}));
+  if (o.diagonal) {
+    const lo = Math.max(o.x.lo, o.y.lo), hi = Math.min(o.x.hi, o.y.hi);
+    svg.append(S('path', {class: 'rule', d: `M${px(sx(lo))} ${px(sy(lo))}L${px(sx(hi))} ${px(sy(hi))}`}));
+  }
+
+  const placed = o.points.map(p => {
+    const dot = {p, x: sx(p.x), dir: null};
+    if (p.x < o.x.lo) { dot.x = box.l; dot.dir = 'left'; } else if (p.x > o.x.hi) { dot.x = box.r; dot.dir = 'right'; }
+    if (rows) dot.y = box.t + (p.row + .5) * rowHeight;
+    else {
+      dot.y = sy(p.y);
+      if (p.y < o.y.lo) { dot.y = box.b; dot.dir = dot.dir || 'down'; } else if (p.y > o.y.hi) { dot.y = box.t; dot.dir = dot.dir || 'up'; }
+    }
+    return dot;
+  });
+  if (rows) swarm(placed, rowHeight);
+  placed.sort((a, b) => (a.p.strong ? 1 : 0) - (b.p.strong ? 1 : 0));     // flagged results are drawn on top
+  const quietRadius = placed.length > 1500 ? 2.2 : 2.8;
+  const marks = S('g', {});
+  for (const dot of placed) {
+    const radius = dot.p.strong ? 4.6 : quietRadius;
+    marks.append(mark(dot.dir ? `tri-${dot.dir}` : dot.p.shape || 'circle', dot.x, dot.y, dot.dir ? radius + .8 : radius,
+                      `dot ${dot.p.cls}${dot.p.strong ? ' big' : ''}`));
+  }
+  const ring = S('circle', {class: 'ring', r: 8, visibility: 'hidden'});
+  svg.append(marks, ring);
+
+  const nearest = event => {
+    const frame = svg.getBoundingClientRect(), mx = event.clientX - frame.left, my = event.clientY - frame.top;
+    let best = null, bestDistance = 18 * 18;
+    for (const dot of placed) {
+      const distance = (dot.x - mx) ** 2 + (dot.y - my) ** 2 - (dot.p.strong ? 40 : 0);
+      if (distance < bestDistance) { bestDistance = distance; best = dot; }
+    }
+    return best;
+  };
+  svg.addEventListener('pointermove', throttled(event => {
+    const dot = svg.matches(':hover') ? nearest(event) : null;
+    svg.style.cursor = dot ? 'pointer' : '';
+    if (dot) showTip(event, dot.p.tip()); else hideTip();
+  }));
+  svg.addEventListener('pointerleave', hideTip);
+  svg.addEventListener('click', event => { const dot = nearest(event); if (dot && o.onPick) o.onPick(dot.p.key); });
+  host.append(svg);
+  return {select(key) {
+    const dot = placed.find(candidate => candidate.p.key === key);
+    setAttrs(ring, dot ? {cx: px(dot.x), cy: px(dot.y), visibility: 'visible'} : {visibility: 'hidden'});
+  }};
+}
+
+/** A chart of lines over a shared x axis.
+    Series: {label, cls, pts: [[x, y]], faint, sizes: [radius per point], peak: [x, y]}.
+    o.band {lo, hi} (arrays of [x, y]) and o.mid are the typical range and its median. */
+function lineChart(host, o) {
+  host.replaceChildren();
+  const width = Math.max(280, host.clientWidth), height = o.height || 300;
+  const box = {l: 54, r: width - 14, t: 12, b: height - 44};
+  const svg = S('svg', {class: 'chart', width, height, viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': o.aria});
+  const sx = linear(o.x.lo, o.x.hi, box.l, box.r), sy = linear(o.y.lo, o.y.hi, box.b, box.t);
+  const at = point => `${px(clamp(sx(point[0]), box.l, box.r))} ${px(clamp(sy(point[1]), box.t, box.b))}`;
+  const path = points => points.length ? 'M' + points.map(at).join('L') : '';
+  drawAxes(svg, box, o.x, o.y);
+  if (o.band) svg.append(S('path', {class: 'typ', d: path(o.band.hi.concat(o.band.lo.slice().reverse())) + 'z'}));
+  if (o.mid) svg.append(S('path', {class: 'typline', d: path(o.mid)}));
+  for (const line of o.vlines || []) svg.append(S('path', {class: 'rule', d: `M${px(sx(line.x))} ${box.t}V${box.b}`}));
+  for (const line of o.hlines || []) svg.append(S('path', {class: 'rule', d: `M${box.l} ${px(sy(line.y))}H${box.r}`}));
+  const ordered = o.series.slice().sort((a, b) => (a.faint ? 0 : 1) - (b.faint ? 0 : 1));
+  for (const series of ordered) {
+    const group = S('g', {class: series.cls});
+    group.append(S('path', {class: `ln${series.faint ? ' faint' : ''}`, d: path(series.pts)}));
+    if (series.sizes && !series.faint) {
+      series.pts.forEach((point, i) => group.append(S('circle', {class: 'dot', cx: px(sx(point[0])), cy: px(clamp(sy(point[1]), box.t, box.b)), r: series.sizes[i]})));
+    }
+    if (series.peak && !series.faint) group.append(S('circle', {class: 'dot big', cx: px(sx(series.peak[0])), cy: px(sy(series.peak[1])), r: 4.5}));
+    svg.append(group);
+  }
+  const cross = S('path', {class: 'cross', visibility: 'hidden'});
+  svg.append(cross);
+  svg.addEventListener('pointermove', throttled(event => {
+    const frame = svg.getBoundingClientRect(), mx = event.clientX - frame.left;
+    if (!svg.matches(':hover') || mx < box.l || mx > box.r) { cross.setAttribute('visibility', 'hidden'); hideTip(); return; }
+    const x = o.x.lo + (mx - box.l) * (o.x.hi - o.x.lo) / (box.r - box.l);
+    setAttrs(cross, {d: `M${px(mx)} ${box.t}V${box.b}`, visibility: 'visible'});
+    const rows = o.series.filter(series => series.pts.length).map(series => {
+      const point = series.pts.reduce((best, p) => Math.abs(p[0] - x) < Math.abs(best[0] - x) ? p : best);
+      return el('tr', {class: series.faint ? 'off' : null}, el('td', {}, swatch({cls: series.cls, line: true})),
+                el('td', {}, series.label), el('td', {class: 'r'}, el('b', {}, o.valueText(point[1]))));
+    });
+    showTip(event, el('div', {}, el('b', {class: 't'}, o.tipTitle(x)), el('table', {}, rows)));
+  }));
+  svg.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); hideTip(); });
+  host.append(svg);
+}
+
+/* ---- 7. Tables --------------------------------------------------------------- */
+function compare(a, b) {
+  if (!has(a) || a === '') return has(b) && b !== '' ? 1 : 0;
+  if (!has(b) || b === '') return -1;
+  return typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'en', {numeric: true});
+}
+/** A sortable table. Columns: {label, value(row), show(row), num, digits, cls, title}.
+    With o.onPick its rows are clickable; o.keyOf gives their key. Returns {select(key)}. */
+function dataTable(host, o) {
+  const body = el('tbody'), more = el('div', {class: 'note'});
+  const headRow = el('tr');
+  const sorted = () => {
+    const sort = ui.sort[o.id];
+    if (!sort) return o.rows;
+    const column = o.columns[sort.column];
+    if (!column) return o.rows;
+    return o.rows.slice().sort((a, b) => {
+      const order = compare(column.value(a), column.value(b));
+      const blank = value => !has(value) || value === '';
+      return blank(column.value(a)) || blank(column.value(b)) ? order : order * sort.direction;
+    });
+  };
+  function cell(column, row) {
+    const value = column.value(row);
+    const content = column.show ? column.show(row) : column.num ? fmt(value, column.digits) : has(value) ? String(value) : '';
+    return el('td', {class: [column.num ? 'r' : '', column.cls || ''].join(' ').trim() || null}, content);
+  }
+  function draw() {
+    const sort = ui.sort[o.id], limit = ui.limit[o.id] || 300, rows = sorted();
+    headRow.replaceChildren(...o.columns.map((column, i) => {
+      const active = sort && sort.column === i;
+      const button = el('button', {type: 'button', title: column.title || 'Sort by this column', onclick: () => {
+        ui.sort[o.id] = {column: i, direction: active ? -sort.direction : (column.num ? -1 : 1)};
+        draw();
+      }}, column.label || el('span', {'aria-label': column.title}, '·'), active ? (sort.direction > 0 ? ' ▲' : ' ▼') : '');
+      return el('th', {class: column.num ? 'r' : null, 'aria-sort': active ? (sort.direction > 0 ? 'ascending' : 'descending') : null}, button);
+    }));
+    body.replaceChildren(...rows.slice(0, limit).map(row => {
+      const key = o.keyOf ? o.keyOf(row) : null;
+      const line = el('tr', {'data-key': key}, o.columns.map(column => cell(column, row)));
+      if (o.onPick) {
+        setAttrs(line, {class: 'pick', tabindex: 0, onclick: event => { if (!event.target.closest('a')) o.onPick(row); },
+                        onkeydown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); o.onPick(row); } }});
+      }
+      return line;
+    }));
+    if (!rows.length) body.append(el('tr', {}, el('td', {colspan: o.columns.length, class: 'note'}, o.empty || 'Nothing to list.')));
+    more.replaceChildren();
+    if (rows.length > limit) {
+      more.append(`Showing ${count(limit)} of ${count(rows.length)} rows. `,
+                  el('button', {type: 'button', class: 'linkish', onclick: () => { ui.limit[o.id] = limit + 1000; draw(); select(selectedKey); }}, 'Show more'));
+    }
+  }
+  let selectedKey = null;
+  function select(key) {
+    selectedKey = key;
+    for (const line of body.children) line.classList.toggle('sel', has(key) && line.dataset.key === key);
+  }
+  draw();
+  host.append(el('div', {class: 'scroll'}, el('table', {}, el('thead', {}, headRow), body)), more);
+  return {select, redraw() { draw(); select(selectedKey); }};
+}
+function simpleTable(headers, rows) {
+  return el('div', {class: 'scroll'}, el('table', {},
+    el('thead', {}, el('tr', {}, headers.map(header => el('th', {class: header.num ? 'r' : null}, header.label)))),
+    el('tbody', {}, rows.map(row => el('tr', {}, row.map((value, i) => el('td', {class: headers[i].num ? 'r' : headers[i].cls || null}, value)))))));
+}
+
+/* ---- 8. Blocks shared by the tabs ---------------------------------------------- */
+const card = (...children) => el('section', {class: 'card'}, children);
+const emptyBox = text => el('div', {class: 'empty'}, text);
+const lineItem = (label, ...value) => el('div', {}, el('span', {class: 'k'}, label + ': '), value);
+
+function statusIcon(finding) {
+  if (!finding) return '';
+  const documented = finding.status === 'documented', label = documented ? 'Documented' : 'New, to check';
+  const icon = S('svg', {class: `icon${documented ? ' doc' : ''}`, viewBox: '0 0 16 16', role: 'img', 'aria-label': label}, S('title', {}, label));
+  if (documented) icon.append(S('path', {d: 'M3 8.5l3.2 3.2L13 4.8', 'stroke-width': 2}));
+  else icon.append(S('path', {d: 'M1.5 8s2.4-4.2 6.5-4.2S14.5 8 14.5 8s-2.4 4.2-6.5 4.2S1.5 8 1.5 8z'}), S('circle', {cx: 8, cy: 8, r: 1.9}));
+  return icon;
+}
+const statusRank = finding => finding ? (finding.status === 'documented' ? 1 : 2) : 0;
+const statusKey = () => el('p', {class: 'note'}, statusIcon({status: 'new'}), ' new, to check   ', statusIcon({status: 'documented'}), ' documented');
+function knownNote(text, url) {
+  if (!text) return '';
+  return url ? el('a', {href: url, target: '_blank', rel: 'noopener'}, text) : text;
+}
+const resultLabel = (checkKey, value) => value ? el('span', {}, swatch(styleOf(checkKey, value)), ' ', value) : '';
+
+function ruleText(name, as) {
+  const value = rule(name);
+  if (Number.isNaN(value)) return 'n/a';
+  return as === 'pct' ? `${Math.round(value * 100)}%` : tickText(value);
+}
+function fromTemplate(id) {
+  const fragment = $('#' + id).content.cloneNode(true);
+  for (const slot of fragment.querySelectorAll('[data-rule]')) slot.textContent = ruleText(slot.dataset.rule, slot.dataset.as);
+  return fragment;
+}
+function settingsBlock(names) {
+  const rows = names.filter(name => RULES.has(name)).map(name => [RULES.get(name).meaning, tickText(rule(name)), name]);
+  return el('details', {}, el('summary', {}, 'Settings and thresholds'),
+            simpleTable([{label: 'Setting'}, {label: 'Value', num: true}, {label: 'Name', cls: 'mono'}], rows));
+}
+function flagDefs(checkKey) {
+  return el('dl', {class: 'defs'}, CHECKS[checkKey].flags.map(([value, cls, text]) =>
+    [el('dt', {}, swatch({cls}), ' ', value), el('dd', {}, text)]));
+}
+/** The predictors that exist, and the ones that count in the selected dataset. */
+function predictorsBlock(open) {
+  const block = el('details', {open}, el('summary', {}, 'Predictors'), fromTemplate('m-predictors'));
+  if (state.ds) {
+    const names = OVERVIEW.get(state.ds).predictors;
+    const shown = isGame(state.ds) ? names.replace('stimulus on/off', 'game on/off') : names;
+    block.append(el('p', {class: 'note'}, names ? `In ${state.ds}, the predictors that count are: ${shown}.`
+                                                : `In ${state.ds}, no predictor is reliable.`));
+  }
+  return block;
+}
+/** The Methods card of a check tab: figure and text, predictors, result values, settings. */
+function methodsCard(templateId, checkKey, ruleNames, predictors) {
+  const block = card(el('h2', {}, 'Methods'), fromTemplate(templateId));
+  if (predictors) block.append(predictorsBlock(predictors === 'open'));
+  if (checkKey) block.append(el('details', {open: true}, el('summary', {}, 'What each result means'), flagDefs(checkKey)));
+  if (ruleNames) block.append(settingsBlock(ruleNames));
+  return block;
+}
+
+/** Why a check gives nothing for a dataset, or null when it has results there. */
+function whyNot(checkKey, dataset) {
+  const row = OVERVIEW.get(dataset);
+  if (checkKey === 'reps') {
+    if (row.kind !== 'videogame') return 'Repetitions compare each play with its replay file, and only the videogame datasets have replay files.';
+    return DATA.reps[dataset] ? null : 'No replay of this dataset could be compared with its slot.';
+  }
+  if (row[`checked_${checkKey}`]) return null;
+  if (checkKey === 'end') return 'The events files of this dataset are empty or not available, so there is no end of the events to compare with the BOLD.';
+  if (!row.predictors) return 'No predictor is reliable in this dataset, so its brain signal cannot tell where the events fall.';
+  if (checkKey === 'drift') return `The runs of this dataset are too short for drift windows (one window is ${rule('drift_window_vols')} volumes).`;
+  if (checkKey === 'pair') return 'No run of this dataset has a comparable run (same task, another design) whose events it could be confused with.';
+  return 'No run of this dataset has a brain signal strong enough to judge.';
+}
+/** The sentence that opens the Results of a check: how many, new versus documented, which ones. */
+function resultsSentence(checkKey, judged, flagged, noun, pick) {
+  const fresh = flagged.filter(row => (findingOf(checkKey, row) || {}).status !== 'documented');
+  const documented = flagged.length - fresh.length;
+  const basis = ['shift', 'pair', 'drift'].includes(checkKey) ? ' judged from all the predictors that count, ' : ' judged, ';
+  const parts = [`Of ${plural(judged, noun)}${basis}`];
+  if (!flagged.length) parts.push(el('b', {}, 'none'), ' needs a look.');
+  else {
+    parts.push(el('b', {}, count(flagged.length)), flagged.length === 1 ? ' needs a look: ' : ' need a look: ',
+               el('b', {}, count(fresh.length)), ' new, to check, and ', el('b', {}, count(documented)), ' documented.');
+  }
+  const block = [el('p', {}, parts)];
+  if (fresh.length) {
+    const named = fresh.slice(0, 6).map((row, i) => [i ? ', ' : '', el('button', {type: 'button', class: 'linkish', onclick: () => pick(row.key)}, rowName(row))]);
+    block.push(el('p', {class: 'note'}, statusIcon({status: 'new'}), ' New: ', named, fresh.length > 6 ? ` and ${count(fresh.length - 6)} more in the list below.` : '.'));
+  }
+  return block;
+}
+
+/** What "colour by" gives a point: class, shape, legend category. */
+function look(checkKey, flag, dataset) {
+  const style = styleOf(checkKey, flag);
+  if (state.colour === 'dataset') return Object.assign({cat: dataset, strong: style.flagged}, DS_STYLE.get(dataset));
+  return {cat: flag, strong: style.flagged, cls: style.cls, shape: 'circle'};
+}
+function legendItems(checkKey, points) {
+  const counts = new Map();
+  for (const point of points) counts.set(point.cat, (counts.get(point.cat) || 0) + 1);
+  if (state.colour === 'dataset') {
+    return DATASETS.filter(name => counts.has(name)).map(name => Object.assign({key: name, label: name, count: counts.get(name)}, DS_STYLE.get(name)));
+  }
+  return CHECKS[checkKey].flags.filter(([value]) => counts.has(value))
+    .map(([value, cls]) => ({key: value, label: value, cls, count: counts.get(value)}));
+}
+/** The rows of a strip chart: one per dataset, or one per group of the selected dataset. */
+function stripRows(items, groupOf) {
+  const labels = state.ds ? [...new Set(items.map(groupOf))].sort((a, b) => compare(a, b)) : DATASETS.filter(name => items.some(item => item.ds === name));
+  const index = new Map(labels.map((label, i) => [label, i]));
+  return {rows: labels.map(label => ({label})), rowOf: item => index.get(state.ds ? groupOf(item) : item.ds)};
+}
+const stripHeight = rows => clamp(Math.round(240 / rows.length), 36, 80);
+/** A legend that filters, and the dot chart under it. `points` carry {flag, ds}; `options()` gives the frame. */
+function dotBlock(id, checkKey, points, options) {
+  const legendHost = el('div'), chartHost = el('div');
+  const hiddenKey = `${id}:${state.colour}`;
+  const hidden = ui.hidden[hiddenKey] = ui.hidden[hiddenKey] || new Set();
+  function draw() {
+    for (const point of points) Object.assign(point, look(checkKey, point.flag, point.ds));
+    legendHost.replaceChildren(legend(legendItems(checkKey, points), hidden, draw));
+    const chart = dotChart(chartHost, Object.assign({points: points.filter(point => !hidden.has(point.cat)), onPick: view.pick}, options()));
+    chart.select(state[view.kind]);
+    block.select = chart.select;
+  }
+  const block = {node: el('div', {}, legendHost, chartHost), select: () => {}};
+  view.draws.push(draw);
+  view.onSelect.push(key => block.select(key));
+  return block.node;
+}
+/** The "Runs" card: detected or all rows, sortable, with the selection highlighted. */
+function listCard(id, checkKey, rows, columns, title) {
+  const tableHost = el('div');
+  const flagged = rows.filter(row => isFlagged(checkKey, row));
+  const modes = [['detected', 'Detected by the check'], ['all', `All ${title.toLowerCase()}`]];
+  const toggle = el('span', {class: 'seg', role: 'group', 'aria-label': 'Rows shown'});
+  function draw() {
+    const mode = ui.mode[id] || 'detected';
+    toggle.replaceChildren(...modes.map(([key, label]) => el('button', {type: 'button', 'aria-pressed': String(mode === key),
+      onclick: () => { ui.mode[id] = key; draw(); }}, label)));
+    tableHost.replaceChildren();
+    const table = dataTable(tableHost, {id: `${id}:${mode}`, rows: mode === 'all' ? rows : flagged, columns, keyOf: row => row.key,
+                                        onPick: row => view.pick(row.key), empty: 'The check detects nothing here.'});
+    table.select(state[view.kind]);
+    listed.select = table.select;
+  }
+  const listed = {select: () => {}};
+  view.onSelect.push(key => listed.select(key));
+  draw();
+  return card(el('div', {class: 'head'}, el('h2', {}, title), toggle), statusKey(), tableHost);
+}
+/** The first columns of every list: status, dataset (when all are shown), name, result. */
+function leadColumns(checkKey, nameLabel) {
+  const columns = [{label: '', title: 'Status: new or documented', value: row => statusRank(findingOf(checkKey, row)),
+                    show: row => statusIcon(findingOf(checkKey, row))}];
+  if (!state.ds) columns.push({label: 'Dataset', value: row => row.ds});
+  columns.push({label: nameLabel, value: row => row.id, cls: 'nowrap'},
+               {label: 'Result', cls: 'nowrap', value: row => row[CHECKS[checkKey].field] || '', show: row => resultLabel(checkKey, row[CHECKS[checkKey].field])});
+  return columns;
+}
+const knownColumn = {label: 'Documented as', value: row => row.kn || '', show: row => knownNote(row.kn, row.ku)};
+
+const SENSITIVITY = {
+  sens_shift: ['Simulated shift caught', v => `A simulated ${rule('simulated_vols')}-volume shift of the start is caught ${v} of the time.`],
+  sens_pair: ['Swapped events caught', v => `A run given the events of another run is caught ${v} of the time.`],
+  sens_jump: ['Simulated jump caught', v => `A simulated jump of ${rule('simulated_vols')} volumes in the middle of a run is caught ${v} of the time.`],
+  sens_drift: ['Simulated drift caught', v => `A simulated drift of ${rule('simulated_vols')} volumes over a run is caught ${v} of the time.`],
+  drift_rate: ['Unchanged runs flagged', v => `Of the unchanged runs, ${v} are flagged.`],
+};
+/** What the check catches: sentences for one dataset, a table for all of them. */
+function sensitivityBlock(keys) {
+  if (state.ds) {
+    const row = OVERVIEW.get(state.ds);
+    return keys.map(key => el('p', {}, has(row[key]) ? SENSITIVITY[key][1](percent(row[key]))
+                                                       : `${SENSITIVITY[key][0]}: could not be measured in this dataset.`));
+  }
+  const intro = keys.map(key => SENSITIVITY[key][1]('this share')).join(' ');
+  return [el('p', {class: 'note'}, 'Per dataset. ', intro),
+          simpleTable([{label: 'Dataset'}].concat(keys.map(key => ({label: SENSITIVITY[key][0], num: true}))),
+                      DATA.overview.map(row => [row.dataset].concat(keys.map(key => percent(row[key])))))];
+}
+/** The detail card of a tab: a title, an optional predictor menu, and a body redrawn on every selection. */
+function detailCard(title, drawBody) {
+  const menuHost = el('span', {class: 'field'}), body = el('div');
+  const draw = () => { menuHost.replaceChildren(); body.replaceChildren(); drawBody(body, menuHost, draw); };
+  view.draws.push(draw);
+  view.onSelect.push(draw);
+  return card(el('div', {class: 'head'}, el('h2', {}, title), menuHost), body);
+}
+/** The predictor menu of a detail card. It only changes what the card displays; the choice is kept across tabs. */
+function predMenu(id, preds, chosen, run, onChange) {
+  const menu = el('select', {id: `pred-${id}`, onchange: event => { state.pred = event.target.value; writeHash(); onChange(); }},
+    el('option', {value: 'all'}, 'All predictors'),
+    preds.map(pred => el('option', {value: pred, selected: pred === chosen},
+                         predName(pred, run.ds, run.task) + (isReliable(run, pred) ? '' : ' (does not count)'))));
+  return [el('label', {for: `pred-${id}`}, 'Predictor'), menu];
+}
+const chosenPred = preds => preds.includes(state.pred) ? state.pred : 'all';
+/** 'game on/off +0.2, button presses -0.5 (volumes)' for the predictors that count. */
+function byPredictor(run, index, digits) {
+  const parts = reliablePreds(run).filter(pred => has(run.p[pred][index]))
+    .map(pred => `${predName(pred, run.ds, run.task)} ${signed(run.p[pred][index], digits)}`);
+  return parts.join(', ');
+}
+const documentedLine = run => run.kn ? lineItem('Documented as', knownNote(run.kn, run.ku)) : null;
+const extent = (values, pad) => {
+  const lo = Math.min(...values), hi = Math.max(...values), margin = (hi - lo || 1) * pad;
+  return {lo: lo - margin, hi: hi + margin};
+};
+const resultsCard = (...children) => card(el('h2', {}, 'Results'), children);
+
+/* ---- 9. Start shift ------------------------------------------------------------- */
+function renderShift(host) {
+  view = newView('run');
+  host.append(methodsCard('m-shift', 'shift', ['shift_min_vols', 'shift_flag_vols', 'r_min', 'lag_min_s', 'lag_max_s', 'n_parcels',
+    'dropped_vols', 'concentration_min', 'reliable_min_runs', 'gain_one', 'gain_confirm', 'availability_min', 'simulated_vols'], 'open'));
+  const runs = scopeRuns();
+  const judged = runs.filter(run => isFlagged('shift', run) || (run.nr > 0 && run.fs !== 'aligned (weak brain signal)'));
+  if (!judged.length) {
+    host.append(resultsCard(emptyBox(state.ds ? whyNot('shift', state.ds) : 'No run could be judged.')));
+    return;
+  }
+  const flagged = judged.filter(run => isFlagged('shift', run));
+  resolveSelection('run', judged, run => isFlagged('shift', run));
+  const plotted = judged.filter(run => has(run.sh)), offChart = flagged.filter(run => !has(run.sh)).length;
+  const clocked = runs.filter(run => has(run.cs));
+  host.append(resultsCard(
+    resultsSentence('shift', judged.length, flagged, 'run', view.pick),
+    runs.length > judged.length && el('p', {class: 'note'}, `${plural(runs.length - judged.length, 'run')} could not be judged: no predictor counts for their task, or their brain signal is too weak.`)));
+
+  const tolerance = rule('shift_min_vols'), limit = rule('shift_flag_vols');
+  const strip = stripRows(plotted, run => run.task);
+  const half = clamp(Math.ceil(peak(flagged.filter(run => has(run.sh)).map(run => run.sh)) * 1.15), 6, 12);
+  const points = plotted.map(run => ({x: run.sh, row: strip.rowOf(run), key: run.key, flag: run.fs, ds: run.ds,
+    tip: () => runTip(run, 'shift', [`Combined shift: ${signed(run.sh)} volumes`, has(run.cs) && `Clock shift: ${signed(run.cs)} volumes`])}));
+  const stripCard = card(el('h2', {}, 'Combined shift of each run'),
+    el('p', {class: 'note'}, `Each dot is a run, at the shift of its events on which its predictors agree, in volumes from the usual shift of its task. The shaded band is the tolerance (±${tolerance} volumes); the dashed lines mark ±${limit} volumes, from which a shift can be flagged. Runs beyond the frame sit on its edge as triangles. Click a dot to see its fit.`),
+    dotBlock('shift', 'shift', points, () => ({
+      aria: 'Combined shift of each run, in volumes', rows: strip.rows, rowHeight: stripHeight(strip.rows),
+      x: {lo: -half, hi: half, label: 'Combined shift (volumes; positive: the events fit later)'},
+      shades: [{x0: -tolerance, x1: tolerance, cls: 'bandfill'}], vlines: [{x: -limit}, {x: limit}]})),
+    offChart > 0 && el('p', {class: 'note'}, `${plural(offChart, 'flagged run')} without a combined shift (no fit, or clocks only) ${offChart === 1 ? 'is' : 'are'} in the list only.`));
+  const left = el('div', {}, stripCard, clocked.length ? clockCard(clocked) : card(el('h2', {}, 'Predictor shift against clock shift'),
+    emptyBox('No run of this selection has a clock shift: the events files keep no task clock to compare with the scanner clock.')));
+  host.append(el('div', {class: 'split'}, left, detailCard('Fit by shift', shiftDetail)));
+
+  const columns = leadColumns('shift', 'Run').concat([
+    {label: 'Finding', value: run => (findingOf('shift', run) || {}).flag || ''},
+    {label: 'Combined shift, vol.', value: run => run.sh, num: true, show: run => signed(run.sh)},
+    {label: 'Clock shift, vol.', value: run => run.cs, num: true, show: run => signed(run.cs)},
+    {label: 'By predictor, vol.', value: run => byPredictor(run, 0)},
+    {label: 'Likely at fault', value: run => run.wh || ''}, knownColumn]);
+  host.append(listCard('shift', 'shift', runs, columns, 'Runs'), shiftReference());
+}
+/** Scatter of the predictors' shift against the clocks' shift, for the runs that have both clocks. */
+function clockCard(clocked) {
+  const brain = run => has(run.sh) ? run.sh : median(reliablePreds(run).map(pred => run.p[pred][0]).filter(has));
+  const points = clocked.filter(run => has(brain(run))).map(run => ({x: brain(run), y: run.cs, key: run.key, flag: run.fs, ds: run.ds,
+    tip: () => runTip(run, 'shift', [`Predictor shift: ${signed(brain(run))} volumes`, `Clock shift: ${signed(run.cs)} volumes`])}));
+  const half = clamp(Math.ceil(peak(points.flatMap(point => [point.x, point.y])) * 1.1), 6, 30);
+  const frame = {lo: -half, hi: half};
+  return card(el('h2', {}, 'Predictor shift against clock shift'),
+    el('p', {class: 'note'}, 'Across: the shift found in the brain signal (the combined shift, or the median of the predictors that count). Up: the shift between the scanner clock and the task clock. Both in volumes. Runs on the diagonal agree.'),
+    dotBlock('clock', 'shift', points, () => ({aria: 'Predictor shift against clock shift, in volumes', height: 340, diagonal: true,
+      x: Object.assign({label: 'Predictor shift (volumes)'}, frame), y: Object.assign({label: 'Clock shift (volumes)'}, frame)})));
+}
+function shiftDetail(body, menuHost, redraw) {
+  const run = RUN.get(state.run);
+  if (!run) { body.append(emptyBox('Select a run in the chart or in the list.')); return; }
+  const store = DATA.curves[run.ds] || {runs: {}, typical: {}}, curves = store.runs[run.id] || {};
+  const preds = PRED_ORDER.filter(pred => curves[pred]), chosen = chosenPred(preds);
+  const finding = findingOf('shift', run);
+  body.append(el('div', {class: 'lines'}, el('div', {}, el('b', {}, `${run.ds} · ${run.id}`)),
+    lineItem('Result', resultLabel('shift', run.fs), finding ? ` (${finding.flag})` : ''),
+    lineItem('Combined shift', has(run.sh) ? `${signed(run.sh)} volumes` : 'none'),
+    lineItem('Clock shift', has(run.cs) ? `${signed(run.cs)} volumes` : 'not available for this run'),
+    lineItem('By predictor', predsOf(run).map(pred => `${predName(pred, run.ds, run.task)} ${signed(run.p[pred][0])} vol. (fit r ${fmt(run.p[pred][1], 2)}${isReliable(run, pred) ? '' : ', does not count'})`).join(' · ') || 'no predictor'),
+    run.wh && lineItem('Likely at fault', run.wh), documentedLine(run)));
+  if (!preds.length) { body.append(emptyBox('This run has no fit curve: no predictor could be built for it.')); return; }
+  menuHost.append(...predMenu('shift', preds, chosen, run, redraw));
+
+  const tr = trOf(run.ds), lags = DATA.meta.lags_s;
+  const toPoints = (encoded, pred) => {
+    const usual = (PRED.get(`${run.ds}|${run.task}|${pred}`) || {}).baseline_s || 0, values = decode(encoded), points = [];
+    for (let i = 0; i < values.length; i++) if (values[i] !== MISSING) points.push([(lags[i] - usual) / tr, values[i] / store.scale]);
+    return points;
+  };
+  const series = (chosen === 'all' ? preds : [chosen]).map(pred => {
+    const pts = toPoints(curves[pred], pred);
+    return {label: predName(pred, run.ds, run.task), cls: PRED_CLASS[pred], pts, faint: chosen === 'all' && !isReliable(run, pred),
+            peak: pts.reduce((best, point) => point[1] > best[1] ? point : best, pts[0])};
+  });
+  const typical = chosen !== 'all' && store.typical[`${run.task}|${chosen}`];
+  const band = typical ? {lo: toPoints(typical.p25, chosen), hi: toPoints(typical.p75, chosen)} : null;
+  const everything = series.flatMap(s => s.pts).concat(band ? band.lo.concat(band.hi) : []);
+  const chartHost = el('div');
+  body.append(legend(series.map(s => ({cls: s.cls, line: true, label: s.label + (s.faint ? ' (does not count)' : '')}))), chartHost,
+    el('p', {class: 'note'}, 'Correlation between the predicted and the measured BOLD at each shift of the events, in volumes from the usual shift of the predictor for this task (0, dashed). The dot is the best shift of the run. ',
+       typical ? `The grey band is the middle half of the ${count(typical.runs)} runs of the task, the dashed curve their median.`
+               : 'Pick one predictor to compare its curve with the usual curve of the task.'));
+  lineChart(chartHost, {aria: `Fit by shift of ${run.id}`, height: 300, series, band, mid: typical ? toPoints(typical.median, chosen) : null,
+    x: Object.assign(extent(everything.map(point => point[0]), 0), {label: 'Shift of the events (volumes from the usual shift)'}),
+    y: Object.assign(extent(everything.map(point => point[1]), .08), {label: 'Fit (correlation r)'}),
+    vlines: [{x: 0}], valueText: value => `r ${fmt(value, 2)}`, tipTitle: x => `Shift ${signed(x)} volumes`});
+}
+function shiftReference() {
+  const rows = DATA.predictors.filter(row => !state.ds || row.dataset === state.ds);
+  const columns = [{label: 'Task', value: row => row.task},
+    {label: 'Predictor', value: row => predName(row.pred, row.dataset, row.task)},
+    {label: 'Runs', value: row => row.runs, num: true, digits: 0},
+    {label: 'Usual shift, s', value: row => row.baseline_s, num: true, show: row => signed(row.baseline_s, 2)},
+    {label: 'Runs that agree', value: row => row.conc, num: true, show: row => percent(row.conc * 100)},
+    {label: 'Median fit r', value: row => row.r_median, num: true, digits: 2},
+    {label: 'Counts', value: row => row.reliable ? 'yes' : 'no'},
+    {label: 'Aliases, vol.', value: row => (row.alias_vols || []).map(v => signed(v)).join(', ')}];
+  if (!state.ds) columns.unshift({label: 'Dataset', value: row => row.dataset});
+  const tableHost = el('div');
+  dataTable(tableHost, {id: 'ref-shift', rows, columns});
+  return card(el('h2', {}, 'Reference'), sensitivityBlock(['sens_shift']),
+    el('h3', {}, 'What normal looks like, per task and predictor'),
+    el('p', {class: 'note'}, `The usual shift is the median best shift of the task's runs (it holds the haemodynamic delay and any constant offset of the task). A predictor counts when at least ${ruleText('concentration_min', 'pct')} of the runs agree with it within ${rule('shift_min_vols')} volumes, over at least ${rule('reliable_min_runs')} runs. Aliases are other shifts at which the usual curve of a periodic design peaks again.`),
+    tableHost);
+}
+
+/* ---- 10. Pairing ------------------------------------------------------------------ */
+function renderPair(host) {
+  view = newView('run');
+  host.append(methodsCard('m-pair', 'pair', ['pair_z', 'lag_min_s', 'lag_max_s', 'n_parcels', 'concentration_min', 'reliable_min_runs'], 'closed'));
+  const runs = scopeRuns(), judged = runs.filter(run => has(run.pz));
+  if (!judged.length) {
+    host.append(resultsCard(emptyBox(state.ds ? whyNot('pair', state.ds) : 'No run could be judged.')));
+    return;
+  }
+  const flagged = judged.filter(run => isFlagged('pair', run)), threshold = rule('pair_z');
+  resolveSelection('run', judged, run => isFlagged('pair', run));
+  host.append(resultsCard(resultsSentence('pair', judged.length, flagged, 'run', view.pick),
+    runs.length > judged.length && el('p', {class: 'note'}, `${plural(runs.length - judged.length, 'run')} could not be judged: no predictor counts for their task, or no other run is comparable.`)));
+
+  const share = run => run.pn ? run.pg / run.pn : 0;
+  const points = judged.map(run => ({x: run.pz, y: share(run) + jitter(run.id) * .035, key: run.key, flag: run.fp, ds: run.ds,
+    tip: () => runTip(run, 'pair', [`Pairing score: ${signed(run.pz, 2)}`, `${run.pg} of ${run.pn} predictors prefer another run`, run.po && `Fits better: ${run.po}`])}));
+  const lo = clamp(Math.floor(Math.min(...judged.map(run => run.pz)) * 1.1), -8, -3);
+  const hi = clamp(Math.ceil(Math.max(...judged.map(run => run.pz)) * 1.1), 3, 5);
+  const chart = card(el('h2', {}, 'Pairing score of each run'),
+    el('p', {class: 'note'}, `Each dot is a run. Across: the pairing score, the mean standardised margin of its predictors. Up: the share of its predictors that fit another run's events better (dots are spread slightly so that they do not hide each other). In the shaded area the score is below ${tickText(threshold)}; a run there is flagged when its predictors also agree on the other run. Click a dot to see its session.`),
+    dotBlock('pair', 'pair', points, () => ({aria: 'Pairing score against the share of predictors that prefer another run', height: 340,
+      x: {lo, hi, label: 'Pairing score (standardised margin; lower: another run fits better)'},
+      y: {lo: -.08, hi: 1.08, label: 'Share of predictors preferring another run'}, shades: [{x1: threshold, cls: 'zone'}]})));
+  host.append(el('div', {class: 'split'}, chart, detailCard('Session matrix', pairDetail)));
+
+  const columns = leadColumns('pair', 'Run').concat([
+    {label: 'Score', value: run => run.pz, num: true, show: run => signed(run.pz, 2)},
+    {label: 'Predictors preferring another run', value: run => has(run.pn) ? share(run) : null, num: true, show: run => has(run.pn) ? `${run.pg} of ${run.pn}` : ''},
+    {label: 'Fits better with', value: run => run.po || ''}, knownColumn]);
+  host.append(listCard('pair', 'pair', runs, columns, 'Runs'), pairReference());
+}
+const shortId = id => id.split(' ').slice(1).join(' ');
+function pairDetail(body, menuHost, redraw) {
+  const run = RUN.get(state.run), store = run && DATA.pairing[run.ds];
+  if (!run || !store) { body.append(emptyBox('Select a run in the chart or in the list.')); return; }
+  const preds = PRED_ORDER.filter(pred => store.cells[pred] && store.cells[pred][run.id]), chosen = chosenPred(preds);
+  const margins = marginsOf(run.ds).get(run.id) || {};
+  body.append(el('div', {class: 'lines'}, el('div', {}, el('b', {}, `${run.ds} · ${run.id}`)),
+    lineItem('Result', resultLabel('pair', run.fp) || 'not judged'),
+    has(run.pz) && lineItem('Pairing score', `${signed(run.pz, 2)}; ${run.pg} of ${run.pn} predictors prefer another run`),
+    run.po && lineItem('Fits better with', run.po),
+    lineItem('By predictor', Object.keys(margins).length ? PRED_ORDER.filter(pred => margins[pred]).map(pred =>
+      `${predName(pred, run.ds, run.task)}: own r ${fmt(margins[pred].own, 2)}, best other r ${fmt(margins[pred].best_other, 2)} (${shortId(margins[pred].other)})`).join(' · ') : 'no predictor that counts'),
+    documentedLine(run)));
+  if (!preds.length) { body.append(emptyBox('This run was not compared with the events of any other run.')); return; }
+  menuHost.append(...predMenu('pair', preds, chosen, run, redraw));
+  const matrixHost = el('div', {class: 'scroll'});
+  body.append(matrixHost, el('p', {class: 'note'}, 'Rows: the BOLD runs of the session. Columns: the events of the runs they were compared with (same task, this session and its neighbours). A stronger blue is a better fit',
+    chosen === 'all' ? ' (the mean over the predictors that count).' : '.', ' The outlined cell is the run\'s own events, the dot the best fit of each row. Click a row label to select that run.'));
+  pairMatrix(matrixHost, run, store, chosen);
+}
+/** Mean fit of one BOLD run with each events file it was compared with: Map(column -> r). */
+function pairFits(run, store, chosen) {
+  const available = PRED_ORDER.filter(pred => store.cells[pred] && store.cells[pred][run.id]);
+  const counting = available.filter(pred => isReliable(run, pred));
+  const used = chosen !== 'all' ? available.filter(pred => pred === chosen) : counting.length ? counting : available;
+  const sums = new Map();
+  for (const pred of used) {
+    const [columns, encoded] = store.cells[pred][run.id], values = decode(encoded);
+    columns.forEach((column, i) => {
+      if (values[i] === MISSING) return;
+      const sum = sums.get(column) || [0, 0];
+      sums.set(column, [sum[0] + values[i] / store.scale, sum[1] + 1]);
+    });
+  }
+  return new Map([...sums].map(([column, sum]) => [column, sum[0] / sum[1]]));
+}
+function pairMatrix(host, selected, store, chosen) {
+  const session = RUNS_BY_DS.get(selected.ds).filter(run => run.sub === selected.sub && run.ses === selected.ses && run.task === selected.task)
+    .map(run => ({run, fits: pairFits(run, store, chosen)})).filter(row => row.fits.size);
+  const columns = [...new Set(session.flatMap(row => [...row.fits.keys()]))].sort((a, b) => a - b);
+  const values = session.flatMap(row => [...row.fits.values()]), lo = Math.min(...values), hi = Math.max(...values);
+  const labelWidth = Math.min(170, 14 + Math.max(...session.map(row => shortId(row.run.id).length)) * 6.8);
+  const size = clamp(Math.floor((host.clientWidth - labelWidth - 40) / columns.length), 16, 34);
+  const top = Math.min(130, 14 + Math.max(...columns.map(column => shortId(store.events[column]).length)) * 5.6);
+  const width = labelWidth + columns.length * size + 60, height = top + session.length * size + 6;
+  const svg = S('svg', {class: 'chart', width, height, viewBox: `0 0 ${width} ${height}`, role: 'img', style: 'max-width:none',
+                        'aria-label': `Fit of each BOLD run of ${selected.sub} ${selected.ses} with the events of each candidate run`});
+  columns.forEach((column, c) => {
+    const x = labelWidth + (c + .5) * size;
+    svg.append(S('text', {x, y: top - 6, transform: `rotate(-55 ${x} ${top - 6})`}, shortId(store.events[column])));
+  });
+  session.forEach((row, r) => {
+    const y = top + r * size, chosenRow = row.run.key === selected.key;
+    const label = S('text', {class: 'row', x: labelWidth - 8, y: y + size / 2 + 4, 'text-anchor': 'end', tabindex: 0, role: 'button',
+                             style: `cursor:pointer${chosenRow ? ';font-weight:700' : ''}`}, shortId(row.run.id));
+    label.addEventListener('click', () => view.pick(row.run.key));
+    label.addEventListener('keydown', event => { if (event.key === 'Enter') view.pick(row.run.key); });
+    svg.append(label);
+    const best = [...row.fits].reduce((a, b) => b[1] > a[1] ? b : a);
+    columns.forEach((column, c) => {
+      const x = labelWidth + c * size, fit = row.fits.get(column), own = store.events[column] === row.run.id;
+      const cell = S('rect', {x: x + 1, y: y + 1, width: size - 2, height: size - 2, rx: 2, class: 'k1',
+        style: has(fit) ? `fill:var(--k);fill-opacity:${(.05 + .95 * (fit - lo) / (hi - lo || 1)).toFixed(2)}` : 'fill:none;stroke:var(--grid)'});
+      cell.addEventListener('pointermove', event => showTip(event, el('div', {}, el('b', {class: 't'}, `BOLD: ${shortId(row.run.id)}`),
+        el('div', {}, `Events of: ${shortId(store.events[column])}${own ? ' (its own)' : ''}`), el('div', {}, has(fit) ? `Fit r ${fmt(fit, 2)}` : 'Not compared'))));
+      cell.addEventListener('pointerleave', hideTip);
+      svg.append(cell);
+      if (own) svg.append(S('rect', {x: x + 1, y: y + 1, width: size - 2, height: size - 2, rx: 2, style: 'fill:none;stroke:var(--ink);stroke-width:2;pointer-events:none'}));
+      if (column === best[0]) svg.append(S('circle', {cx: x + size / 2, cy: y + size / 2, r: 3, style: 'fill:var(--ink);stroke:var(--surface);stroke-width:1.2;pointer-events:none'}));
+    });
+  });
+  host.append(svg);
+}
+function pairReference() {
+  const groups = new Map();
+  for (const dataset of scopeDatasets()) {
+    for (const row of (DATA.pairing[dataset] || {}).margins || []) {
+      const key = `${dataset}|${row.pred}`;
+      if (!groups.has(key)) groups.set(key, {dataset, pred: row.pred, margins: [], own: 0});
+      const group = groups.get(key);
+      group.margins.push(row.own - row.best_other);
+      group.own += row.own > row.best_other ? 1 : 0;
+    }
+  }
+  const rows = [...groups.values()].map(group => [group.dataset, predName(group.pred, group.dataset, ''), count(group.margins.length),
+    percent(100 * group.own / group.margins.length), signed(median(group.margins), 2)]);
+  return card(el('h2', {}, 'Reference'), sensitivityBlock(['sens_pair']),
+    el('h3', {}, 'What normal looks like, per dataset and predictor'),
+    el('p', {class: 'note'}, 'For the predictors that count: how often the run\'s own events fit best, and the usual margin (fit with the own events minus the best fit with another run\'s, in r).'),
+    rows.length ? simpleTable([{label: 'Dataset'}, {label: 'Predictor'}, {label: 'Runs', num: true}, {label: 'Own events fit best', num: true}, {label: 'Median margin, r', num: true}], rows)
+                : el('p', {class: 'note'}, 'No margin was measured here.'));
+}
+
+/* ---- 11. End of run ---------------------------------------------------------------- */
+function renderEnd(host) {
+  view = newView('run');
+  host.append(methodsCard('m-end', 'end', ['dropped_vols']));
+  const runs = scopeRuns(), judged = runs.filter(run => has(run.tail) || isFlagged('end', run));
+  if (!judged.length) {
+    host.append(resultsCard(emptyBox(state.ds ? whyNot('end', state.ds) : 'No run has an end of events to compare.')));
+    return;
+  }
+  const flagged = judged.filter(run => isFlagged('end', run));
+  resolveSelection('run', judged, run => isFlagged('end', run));
+  host.append(resultsCard(resultsSentence('end', judged.length, flagged, 'run', view.pick),
+    runs.length > judged.length && el('p', {class: 'note'}, `${plural(runs.length - judged.length, 'run')} could not be judged: their events files have no content or are not available.`)));
+
+  const plotted = judged.filter(run => has(run.tail)), strip = stripRows(plotted, run => run.task);
+  if (state.ds) {
+    for (const row of strip.rows) {
+      const usual = (DATA.end[state.ds] || []).find(entry => entry.task === row.label);
+      if (usual && usual.p75 > usual.p25) row.band = [usual.p25, usual.p75];
+    }
+  }
+  const quiet = plotted.filter(run => !isFlagged('end', run)).map(run => run.tail);
+  const lo = clamp(Math.floor(Math.min(...plotted.map(run => run.tail)) * 1.1), -40, -10);
+  const hi = clamp(Math.ceil(Math.max(30, ...quiet) * 1.1), 30, 120);
+  const past = -2 * trOf(state.ds || plotted[0].ds);
+  const points = plotted.map(run => ({x: run.tail, row: strip.rowOf(run), key: run.key, flag: run.fe, ds: run.ds,
+    tip: () => runTip(run, 'end', [`Tail: ${signed(run.tail)} s`, `BOLD: ${run.n} volumes; events end at ${fmt(run.ee)} s`])}));
+  const chart = card(el('h2', {}, 'Tail of each run'),
+    el('p', {class: 'note'}, `Each dot is a run, at the time between the end of its last event and the end of its BOLD, in seconds. Left of the dashed line (${fmt(past)} s, 2 volumes) the events go on after the BOLD has stopped.`,
+       state.ds ? ' The grey band of a row is the middle half of the tails of that task.' : '', ' Runs beyond the frame sit on its edge as triangles. Click a dot to see the run.'),
+    dotBlock('end', 'end', points, () => ({aria: 'Tail of each run, in seconds', rows: strip.rows, rowHeight: stripHeight(strip.rows),
+      x: {lo, hi, label: 'Tail: BOLD end minus events end (seconds)'}, vlines: [{x: past}, {x: 0}]})));
+  host.append(el('div', {class: 'split'}, chart, detailCard('Selected run', endDetail)));
+
+  const columns = leadColumns('end', 'Run').concat([
+    {label: 'Volumes', value: run => run.n, num: true, digits: 0},
+    {label: 'BOLD, s', value: run => run.n * trOf(run.ds), num: true},
+    {label: 'Events end, s', value: run => run.ee, num: true},
+    {label: 'Tail, s', value: run => run.tail, num: true, show: run => signed(run.tail)}, knownColumn]);
+  host.append(listCard('end', 'end', runs, columns, 'Runs'), endReference());
+}
+function endDetail(body) {
+  const run = RUN.get(state.run);
+  if (!run) { body.append(emptyBox('Select a run in the chart or in the list.')); return; }
+  const duration = run.n * trOf(run.ds), usual = (DATA.end[run.ds] || []).find(entry => entry.task === run.task);
+  body.append(el('div', {class: 'lines'}, el('div', {}, el('b', {}, `${run.ds} · ${run.id}`)),
+    lineItem('Result', resultLabel('end', run.fe) || 'not judged'),
+    lineItem('BOLD', `${run.n} volumes, ${fmt(duration)} s`),
+    lineItem('Events end', has(run.ee) ? `${fmt(run.ee)} s` : 'no events'),
+    has(run.tail) && lineItem('Tail', `${signed(run.tail)} s`),
+    usual && lineItem('Usual tail of the task', `${fmt(usual.median)} s (middle half of the runs: ${fmt(usual.p25)} to ${fmt(usual.p75)} s)`),
+    documentedLine(run)));
+  if (!has(run.ee)) return;
+  const sx = linear(0, Math.max(duration, run.ee) * 1.03, 62, 450);
+  const bar = (y, end, cls) => S('rect', {x: 62, y, width: px(sx(end) - 62), height: 18, rx: 3, class: cls});
+  const svg = S('svg', {class: 'sk', viewBox: '0 0 460 96', style: 'max-width:460px', role: 'img',
+                        'aria-label': `BOLD of ${fmt(duration)} seconds and events ending at ${fmt(run.ee)} seconds`},
+    S('text', {x: 0, y: 24}, 'BOLD'), bar(10, duration, 'fa'), S('text', {x: 0, y: 56}, 'Events'), bar(42, run.ee, run.ee > duration ? 'fb' : 'fq'),
+    S('path', {class: 't d', d: `M${px(sx(duration))} 4V72`}),
+    S('text', {class: 's', x: 62, y: 88}, '0 s'), S('text', {class: 's', x: px(sx(duration)), y: 88, 'text-anchor': 'end'}, `BOLD end ${fmt(duration)} s`));
+  body.append(svg, el('p', {class: 'note'}, 'The BOLD and the events of the run on the same time axis. The dashed line is the end of the BOLD.'));
+}
+function endReference() {
+  const rows = scopeDatasets().flatMap(dataset => (DATA.end[dataset] || []).map(entry =>
+    [dataset, entry.task, count(entry.runs), fmt(entry.median), fmt(entry.p25), fmt(entry.p75)]));
+  return card(el('h2', {}, 'Reference'),
+    el('p', {class: 'note'}, 'What normal looks like: the tail of the runs of each task, in seconds (median, and the middle half of the runs).'),
+    rows.length ? simpleTable([{label: 'Dataset'}, {label: 'Task'}, {label: 'Runs', num: true}, {label: 'Tail, median', num: true},
+                               {label: '25th percentile', num: true}, {label: '75th percentile', num: true}], rows)
+                : el('p', {class: 'note'}, 'No tail was measured here.'));
+}
+
+/* ---- 12. Drift ------------------------------------------------------------------------ */
+const meanSlope = run => mean(reliablePreds(run).map(pred => run.p[pred][3]).filter(has));
+function renderDrift(host) {
+  view = newView('run');
+  host.append(methodsCard('m-drift', 'drift', ['drift_z', 'slope_min', 'drift_window_vols', 'drift_step_vols', 'drift_search_s', 'simulated_vols', 'dropped_vols'], 'closed'));
+  const runs = scopeRuns(), judged = runs.filter(run => has(run.dz));
+  if (!judged.length) {
+    host.append(resultsCard(emptyBox(state.ds ? whyNot('drift', state.ds) : 'No run could be judged.')));
+    return;
+  }
+  const flagged = judged.filter(run => isFlagged('drift', run)), threshold = rule('drift_z'), least = rule('slope_min');
+  resolveSelection('run', judged, run => isFlagged('drift', run));
+  const rate = state.ds ? OVERVIEW.get(state.ds).drift_rate : null;
+  host.append(resultsCard(resultsSentence('drift', judged.length, flagged, 'run', view.pick),
+    has(rate) && el('p', {class: 'note'}, `The rule flags ${percent(rate)} of the runs of this dataset as they are, and catches only part of the simulated drifts (see Reference): flagged runs are candidates to look at, not proof of a drift.`),
+    runs.length > judged.length && el('p', {class: 'note'}, `${plural(runs.length - judged.length, 'run')} could not be judged: no predictor counts for their task, or they are too short for drift windows.`)));
+
+  const slopes = new Map(judged.map(run => [run.key, meanSlope(run)]));
+  const plotted = judged.filter(run => has(slopes.get(run.key)));
+  const points = plotted.map(run => ({x: run.dz, y: slopes.get(run.key), key: run.key, flag: run.fd, ds: run.ds,
+    tip: () => runTip(run, 'drift', [`Drift score: ${signed(run.dz, 2)}`, `Mean slope: ${signed(slopes.get(run.key), 2)} volumes per 10 minutes`])}));
+  const xHalf = clamp(Math.ceil(usualPeak(plotted.map(run => run.dz)) * 1.5), 4, 8);
+  const yHalf = clamp(Math.ceil(usualPeak([...slopes.values()].filter(has)) * 1.5), 3, 12);
+  const chart = card(el('h2', {}, 'Drift score and slope of each run'),
+    el('p', {class: 'note'}, `Each dot is a run. Across: the drift score, the mean standardised slope of its predictors. Up: their mean slope, in volumes per 10 minutes. A run is flagged beyond both pairs of dashed lines (score ±${threshold}, slope ±${least}) when its predictors slope the same way. Runs beyond the frame sit on its edge as triangles. Click a dot to see the run.`),
+    dotBlock('drift', 'drift', points, () => ({aria: 'Drift score against mean slope of each run', height: 340,
+      x: {lo: -xHalf, hi: xHalf, label: 'Drift score (standardised slope)'}, y: {lo: -yHalf, hi: yHalf, label: 'Mean slope (volumes per 10 minutes)'},
+      vlines: [{x: -threshold}, {x: threshold}], hlines: [{y: -least}, {y: least}]})));
+  host.append(el('div', {class: 'split'}, chart, detailCard('Shift along the run', driftDetail)));
+
+  const columns = leadColumns('drift', 'Run').concat([
+    {label: 'Score', value: run => run.dz, num: true, show: run => signed(run.dz, 2)},
+    {label: 'Mean slope, vol. per 10 min', value: run => slopes.get(run.key), num: true, show: run => signed(slopes.get(run.key), 2)},
+    {label: 'Slope by predictor', value: run => byPredictor(run, 3, 2)}, knownColumn]);
+  host.append(listCard('drift', 'drift', runs, columns, 'Runs'),
+    card(el('h2', {}, 'Reference'), sensitivityBlock(['sens_jump', 'sens_drift', 'drift_rate'])));
+}
+function driftDetail(body, menuHost, redraw) {
+  const run = RUN.get(state.run), store = run && DATA.drift[run.ds];
+  if (!run || !store) { body.append(emptyBox('Select a run in the chart or in the list.')); return; }
+  const preds = PRED_ORDER.filter(pred => store.windows[pred] && store.windows[pred][run.id]), chosen = chosenPred(preds);
+  body.append(el('div', {class: 'lines'}, el('div', {}, el('b', {}, `${run.ds} · ${run.id}`)),
+    lineItem('Result', resultLabel('drift', run.fd) || 'not judged'),
+    has(run.dz) && lineItem('Drift score', signed(run.dz, 2)),
+    lineItem('Slope by predictor', (byPredictor(run, 3, 2) || 'none') + ' (volumes per 10 minutes)'), documentedLine(run)));
+  if (!preds.length) { body.append(emptyBox('This run has no drift windows: it is too short, or no predictor could be built for it.')); return; }
+  menuHost.append(...predMenu('drift', preds, chosen, run, redraw));
+  const tr = trOf(run.ds);
+  const series = preds.map(pred => {
+    const [shifts, fits] = store.windows[pred][run.id].map(decode), pts = [], sizes = [];
+    for (let i = 0; i < shifts.length; i++) {
+      if (shifts[i] === MISSING) continue;
+      pts.push([(store.t0_s + i * store.dt_s) / 60, shifts[i] / store.lag_scale / tr]);
+      sizes.push(px(1.2 + 3 * clamp(fits[i] / store.scale / .4, 0, 1)));
+    }
+    return {label: predName(pred, run.ds, run.task), cls: PRED_CLASS[pred], pts, sizes, counts: isReliable(run, pred),
+            faint: chosen === 'all' ? !isReliable(run, pred) : pred !== chosen};
+  });
+  const reach = rule('drift_search_s') / tr, chartHost = el('div');
+  body.append(legend(series.map(s => ({cls: s.cls, line: true, label: s.label + (s.counts ? '' : ' (does not count)')}))),
+    chartHost, el('p', {class: 'note'}, 'Best shift in each window along the run, in volumes from the run\'s own best shift (0, dashed). Larger dots are windows that fit better. A steady run stays near 0; a drift slopes and a jump steps. Thin dashed curves are behind: predictors that do not count, or that are not selected.'));
+  lineChart(chartHost, {aria: `Best shift in each window along ${run.id}`, height: 300, series,
+    x: Object.assign(extent(series.flatMap(s => s.pts.map(point => point[0])), .03), {label: 'Centre of the window (minutes into the run)'}),
+    y: {lo: -reach * 1.08, hi: reach * 1.08, label: 'Shift in the window (volumes)'}, hlines: [{y: 0}],
+    valueText: value => `${signed(value)} vol.`, tipTitle: x => `Window at ${fmt(x)} min`});
+}
+
+/* ---- 13. Repetitions -------------------------------------------------------------------- */
+const replayLabel = file => {
+  const match = /level-([^_]+)_rep-(\d+)/.exec(file || '');
+  return match ? `${match[1]} rep-${match[2]}` : file;
+};
+function renderReps(host) {
+  view = newView('play');
+  host.append(methodsCard('m-reps', 'reps', ['slot_tolerance_s', 'replay_z', 'availability_min'], 'closed'));
+  const datasets = scopeDatasets().filter(dataset => DATA.reps[dataset]);
+  const plays = datasets.flatMap(dataset => DATA.reps[dataset].plays), judged = plays.filter(play => has(play.dev));
+  if (!judged.length) {
+    host.append(resultsCard(emptyBox(state.ds ? whyNot('reps', state.ds) || 'No play of this dataset has a slot to compare its replay with.'
+                                              : 'No dataset shown here has replay files to compare.')));
+    return;
+  }
+  const flagged = plays.filter(play => isFlagged('reps', play)), tolerance = rule('slot_tolerance_s');
+  resolveSelection('play', plays, play => isFlagged('reps', play));
+  host.append(resultsCard(resultsSentence('reps', judged.length, flagged, 'play', view.pick),
+    el('p', {class: 'note'}, `${plural(plays.length - judged.length, 'play')} have no slot (the last play of a run, or a play without a replay file) and are not judged.`)));
+
+  const strip = stripRows(judged, play => play.id.split(' ')[0]);
+  const half = clamp(Math.ceil(peak(judged.map(play => play.dev)) * 1.1), 2, 6);
+  const points = judged.map(play => ({x: play.dev, row: strip.rowOf(play), key: play.key, flag: play.flag, ds: play.ds,
+    tip: () => el('div', {}, el('b', {class: 't'}, `${play.ds} · ${play.id}`), el('div', {}, `Result: ${play.flag}`),
+                  el('div', {}, `Slot deviation: ${signed(play.dev, 2)} s`), el('div', {}, `${(play.cand || []).length} other replays of ${play.lv} in the session`))}));
+  const chart = card(el('h2', {}, 'Replay against its slot'),
+    el('p', {class: 'note'}, `Each dot is a play, at its slot deviation: the slot minus the replay's length minus the session's usual gap, in seconds. Almost every play sits at 0; the shaded band is the tolerance (±${tolerance} s). Plays beyond the frame sit on its edge as triangles. Click a dot to see the play.`),
+    dotBlock('reps', 'reps', points, () => ({aria: 'Slot deviation of each play, in seconds', rows: strip.rows, rowHeight: stripHeight(strip.rows),
+      x: {lo: -half, hi: half, label: 'Slot deviation (seconds; positive: the replay is shorter than its slot)'},
+      shades: [{x0: -tolerance, x1: tolerance, cls: 'bandfill'}]})));
+  host.append(el('div', {class: 'split'}, chart, detailCard('Candidates of the selected play', repsDetail)));
+
+  const runOf = play => RUN.get(`${play.ds}|${play.run}`) || {};
+  const columns = leadColumns('reps', 'Play').concat([
+    {label: 'Level', value: play => play.lv},
+    {label: 'Slot deviation, s', value: play => play.dev, num: true, show: play => signed(play.dev, 2)},
+    {label: 'Other replays', value: play => (play.cand || []).length, num: true, digits: 0},
+    {label: 'Swapped with', value: play => play.swap || ''},
+    {label: 'Documented as', value: play => runOf(play).kn || '', show: play => knownNote(runOf(play).kn, runOf(play).ku)}]);
+  host.append(listCard('reps', 'reps', plays, columns, 'Plays'), repsReference(datasets));
+}
+function repsDetail(body) {
+  const play = PLAY.get(state.play);
+  if (!play) { body.append(emptyBox('Select a play in the chart or in the list.')); return; }
+  const tolerance = rule('slot_tolerance_s'), run = RUN.get(`${play.ds}|${play.run}`);
+  body.append(el('div', {class: 'lines'}, el('div', {}, el('b', {}, `${play.ds} · ${play.id}`)),
+    lineItem('Result', resultLabel('reps', play.flag)), lineItem('Level', play.lv),
+    lineItem('Slot deviation of its own replay', has(play.dev) ? `${signed(play.dev, 2)} s` : 'no slot (last play of its run, or no replay file)'),
+    play.swap && lineItem('Swapped with', play.swap), run && documentedLine(run)));
+  if (!(play.cand || []).length) { body.append(emptyBox('No other play of this level in the session: there is no replay it could be confused with.')); return; }
+  const rows = play.cand.map(([file, deviation, evidence]) => [replayLabel(file), signed(deviation, 2),
+    has(deviation) ? (Math.abs(deviation) <= tolerance ? 'yes' : 'no') : '', signed(evidence, 2)]);
+  body.append(simpleTable([{label: 'Other replay'}, {label: 'Slot dev., s', num: true}, {label: 'Fills the slot'}, {label: 'Brain, z', num: true}], rows),
+    el('p', {class: 'note'}, `Each row is the replay of another play of the same level in the session, put in this play's slot. Slot deviation (dev.): how far it is from filling the slot. Brain: how much better it fits the brain than the play's own replay (median standardised gain; ${rule('replay_z')} or more is needed, from a replay that fills the slot).`));
+}
+function repsReference(datasets) {
+  const rows = datasets.map(dataset => {
+    const {stats, sim} = DATA.reps[dataset];
+    return [dataset, count(stats.plays), count(stats.with_cand), signed(stats.p1, 2), signed(stats.p99, 2), count(sim.n_swaps),
+            percent(sim.caught), percent(sim.by_slot), percent(sim.brain_when_same_length), percent(sim.brain_false_alarm)];
+  });
+  return card(el('h2', {}, 'Reference'),
+    el('p', {class: 'note'}, 'Per dataset: plays, plays with at least one other replay of their level in the session, the spread of the slot deviation of the plays that fit (1st to 99th percentile, seconds), and the simulated swaps between replays of the same level: how many are caught in total, by the slot alone, and by the brain when both replays have the same length. The last column is the share of plays for which the brain rule prefers another replay as they are.'),
+    simpleTable([{label: 'Dataset'}, {label: 'Plays', num: true}, {label: 'With other replays', num: true}, {label: 'Slot deviation, 1st pct', num: true},
+                 {label: '99th pct', num: true}, {label: 'Simulated swaps', num: true}, {label: 'Caught', num: true}, {label: 'By the slot', num: true},
+                 {label: 'By the brain, same length', num: true}, {label: 'Brain rule on unchanged plays', num: true}], rows));
+}
+
+/* ---- 14. Overview ----------------------------------------------------------------------- */
+const TAB_OF_CHECK = {'Start shift': 'shift', 'Pairing': 'pair', 'End of run': 'end', 'Drift': 'drift', 'Repetitions': 'reps', 'Coverage': 'coverage'};
+function renderOverview(host) {
+  view = newView('run');
+  const rows = DATA.overview.filter(row => !state.ds || row.dataset === state.ds);
+  const found = DATA.findings.filter(row => (!state.ds || row.dataset === state.ds) && row.check !== 'Coverage');
+  const total = key => rows.reduce((sum, row) => sum + (row[key] || 0), 0);
+  const tile = (value, label) => el('div', {class: 'tile'}, el('b', {class: 'num'}, count(value)), el('span', {}, label));
+  host.append(el('div', {class: 'tiles'}, tile(total('runs'), state.ds ? `runs in ${state.ds}` : `runs in ${rows.length} datasets`),
+    tile(total('with_series'), 'runs with parcel time series'), tile(found.length, 'findings to look at'),
+    tile(found.filter(row => row.status !== 'documented').length, 'of which new, to check'), tile(total('coverage'), 'runs not checked in full')));
+  host.append(card(el('h2', {}, 'Methods'), fromTemplate('m-overview'), predictorsBlock(false)), matrixCard(), findingsCard());
+}
+function matrixCell(row, key) {
+  const label = key === 'coverage' ? 'Coverage' : CHECKS[key].label, reason = key === 'coverage' ? null : whyNot(key, row.dataset);
+  if (reason) return el('span', {class: 'cell na', title: reason, tabindex: 0, 'aria-label': `${label} not available: ${reason}`}, 'n/a');
+  const flagged = key === 'coverage' ? row.coverage : row[key], checked = key === 'coverage' ? row.runs : row[`checked_${key}`];
+  const unit = key === 'reps' ? 'plays' : 'runs';
+  const title = key === 'coverage' ? `${count(flagged)} of ${count(checked)} runs could not be checked in full`
+                                   : `${count(flagged)} flagged of ${count(checked)} ${unit} judged`;
+  return el('button', {type: 'button', class: `cell${flagged ? ' hit' : ''}`, title: `${title}. Open ${label} for ${row.dataset}.`,
+                       onclick: () => go({tab: key, ds: row.dataset})}, `${count(flagged)} / ${count(checked)}`);
+}
+function matrixCard() {
+  const keys = ['shift', 'pair', 'end', 'drift', 'reps', 'coverage'];
+  const head = ['Dataset', 'Runs', 'With time series', 'BIDS commit', 'Predictors that count']
+    .concat(keys.map(key => key === 'coverage' ? 'Coverage' : CHECKS[key].label));
+  const body = el('tbody');
+  for (const row of DATA.overview) {
+    const chosen = state.ds === row.dataset;
+    const predictors = isGame(row.dataset) ? row.predictors.replace('stimulus on/off', 'game on/off') : row.predictors;
+    body.append(el('tr', {class: [chosen ? 'sel' : '', row.note ? 'nonote' : ''].join(' ').trim() || null},
+      el('td', {class: 'nowrap'}, el('button', {type: 'button', class: 'linkish', 'aria-pressed': String(chosen),
+        onclick: () => go({ds: chosen ? '' : row.dataset})}, row.dataset), el('div', {class: 'note'}, row.kind)),
+      el('td', {class: 'r'}, count(row.runs)), el('td', {class: 'r'}, count(row.with_series)),
+      el('td', {class: 'mono'}, (row.bids_commit || '').slice(0, 7)), el('td', {}, predictors || 'none'),
+      keys.map(key => el('td', {class: 'nowrap'}, matrixCell(row, key)))));
+    if (row.note) body.append(el('tr', {class: `dsnote${chosen ? ' sel' : ''}`}, el('td', {}), el('td', {colspan: head.length - 1}, row.note + '.')));
+  }
+  return card(el('h2', {}, 'Datasets and checks'),
+    el('p', {class: 'note'}, 'Each cell gives the runs flagged out of the runs the check could judge (plays for Repetitions; for Coverage, the runs that could not be checked in full). "n/a" means that the check cannot run in that dataset: hover or focus it for the reason. Click a cell to open that check for that dataset.'),
+    el('div', {class: 'scroll'}, el('table', {}, el('thead', {}, el('tr', {}, head.map(label => el('th', {}, label)))), body)));
+}
+function openFinding(finding) {
+  const key = `${finding.dataset}|${finding.run}`, tab = TAB_OF_CHECK[finding.check];
+  go(Object.assign({tab}, tab === 'reps' ? {play: key} : {run: key}));
+  $('#tabs').scrollIntoView();
+}
+function findingsCard() {
+  const tableHost = el('div'), countHost = el('span', {class: 'note'});
+  const menu = (id, label, options) => el('span', {class: 'field'}, el('label', {for: `filter-${id}`}, label),
+    el('select', {id: `filter-${id}`, onchange: event => { ui.filter[id] = event.target.value; draw(); }},
+       options.map(([value, text]) => el('option', {value, selected: ui.filter[id] === value}, text))));
+  function draw() {
+    const rows = DATA.findings.filter(row => (!state.ds || row.dataset === state.ds)
+      && (!ui.filter.check || row.check === ui.filter.check) && (!ui.filter.status || row.status === ui.filter.status));
+    countHost.textContent = plural(rows.length, 'finding');
+    tableHost.replaceChildren();
+    dataTable(tableHost, {id: 'findings', rows, onPick: openFinding, empty: 'No finding matches.', columns: [
+      {label: '', title: 'Status: new or documented', value: statusRank, show: statusIcon},
+      {label: 'Dataset', value: row => row.dataset}, {label: 'Run or play', value: row => row.run, cls: 'nowrap'},
+      {label: 'Check', value: row => row.check, cls: 'nowrap'}, {label: 'Finding', value: row => row.flag},
+      {label: 'Detail', value: row => row.detail || ''}, {label: 'Likely at fault', value: row => row.where || ''},
+      {label: 'Documented as', value: row => row.known || '', show: row => knownNote(row.known, row.url)},
+      {label: 'Events file', value: row => (row.events || '').split('/').pop(), cls: 'mono nowrap'}]});
+  }
+  draw();
+  return card(el('h2', {}, 'Flagged runs'),
+    el('p', {class: 'note'}, 'Every run a check flagged, with the predictors that see the problem and the file it points at. Click a row to open the run in its check.'),
+    el('div', {class: 'controls'}, menu('check', 'Check', [['', 'All checks']].concat(Object.keys(TAB_OF_CHECK).map(name => [name, name]))),
+       menu('status', 'Status', [['', 'New and documented'], ['new', 'New, to check'], ['documented', 'Documented']]), countHost),
+    statusKey(), tableHost);
+}
+
+/* ---- 15. Coverage ------------------------------------------------------------------------ */
+function renderCoverage(host) {
+  view = newView('run');
+  host.append(card(el('h2', {}, 'Methods'), fromTemplate('m-coverage')));
+  const rows = DATA.overview.filter(row => !state.ds || row.dataset === state.ds);
+  const missing = DATA.coverage.filter(row => !state.ds || row.ds === state.ds);
+  const total = key => rows.reduce((sum, row) => sum + (row[key] || 0), 0);
+  const unreliable = rows.filter(row => !row.predictors).map(row => row.dataset);
+  host.append(resultsCard(
+    el('p', {}, `Of ${plural(total('runs'), 'run')}, `, el('b', {}, count(total('coverage'))), ` could not be checked in full, and ${count(total('runs') - total('with_series'))} have no parcel time series.`),
+    unreliable.length > 0 && el('p', {}, `No predictor is reliable in ${unreliable.join(', ')}: the brain checks cannot run there.`)));
+
+  const reasons = new Map();
+  for (const row of missing) {
+    if (!reasons.has(row.ds)) reasons.set(row.ds, new Map());
+    reasons.get(row.ds).set(row.coverage, (reasons.get(row.ds).get(row.coverage) || 0) + 1);
+  }
+  const perDataset = rows.map(row => [row.dataset, count(row.runs), count(row.with_series), count(row.coverage),
+    el('div', {}, [...(reasons.get(row.dataset) || [])].sort((a, b) => b[1] - a[1]).map(([text, n]) => el('div', {}, `${plural(n, 'run')}: ${text}`))),
+    ['shift', 'pair', 'end', 'drift', 'reps'].filter(key => whyNot(key, row.dataset) && (key !== 'reps' || isGame(row.dataset))).map(key => el('div', {}, `${CHECKS[key].label}: ${whyNot(key, row.dataset)}`)),
+    row.note || '']);
+  host.append(card(el('h2', {}, 'What could not be checked, per dataset'),
+    simpleTable([{label: 'Dataset'}, {label: 'Runs', num: true}, {label: 'With time series', num: true}, {label: 'Not checked in full', num: true},
+                 {label: 'Why, by run'}, {label: 'Checks that cannot run'}, {label: 'Note'}], perDataset)));
+
+  const tableHost = el('div');
+  const columns = [{label: 'Run', value: row => row.id, cls: 'nowrap'}, {label: 'Task', value: row => row.task}, {label: 'What is missing', value: row => row.coverage}];
+  if (!state.ds) columns.unshift({label: 'Dataset', value: row => row.ds});
+  dataTable(tableHost, {id: 'coverage', rows: missing, columns, empty: 'Every run of this selection could be checked.'});
+  host.append(card(el('h2', {}, 'Runs'), tableHost));
+}
+
+/* ---- 16. Page: controls, tabs, rendering ---------------------------------------------------- */
+const RENDER = {overview: renderOverview, shift: renderShift, pair: renderPair, end: renderEnd, drift: renderDrift,
+                reps: renderReps, coverage: renderCoverage};
+
+function buildControls() {
+  $('#lede').textContent = `Timing checks between each BOLD run and its events file, read from the brain signal, for every Courtois NeuroMod dataset with parcel time series: ${count(DATA.overview.reduce((sum, row) => sum + row.runs, 0))} runs in ${DATASETS.length} datasets. Each tab explains one check, shows every run, and lists the runs that need a look.`;
+  $('#ds-menu').append(el('option', {value: ''}, 'All datasets'),
+    ...DATA.overview.map(row => el('option', {value: row.dataset}, `${row.dataset} (${count(row.runs)} runs)`)));
+  $('#ds-menu').addEventListener('change', event => go({ds: event.target.value}));
+  for (const button of document.querySelectorAll('[data-colour]')) button.addEventListener('click', () => go({colour: button.dataset.colour}));
+  const tabs = $('#tabs');
+  TABS.forEach(([key, label]) => tabs.append(el('button', {type: 'button', role: 'tab', id: `tab-${key}`, 'aria-controls': 'view', 'data-tab': key,
+    onclick: () => go({tab: key})}, label)));
+  tabs.addEventListener('keydown', event => {
+    const step = {ArrowRight: 1, ArrowLeft: -1}[event.key];
+    if (!step) return;
+    const index = TABS.findIndex(tab => tab[0] === state.tab), next = TABS[(index + step + TABS.length) % TABS.length][0];
+    go({tab: next});
+    $(`#tab-${next}`).focus();
+  });
+}
+function syncControls() {
+  $('#ds-menu').value = state.ds;
+  for (const button of document.querySelectorAll('[data-colour]')) button.setAttribute('aria-pressed', String(button.dataset.colour === state.colour));
+  for (const tab of $('#tabs').children) {
+    const active = tab.dataset.tab === state.tab;
+    setAttrs(tab, {'aria-selected': String(active), tabindex: active ? 0 : -1});
+  }
+}
+/** Draws the visible tab only; the other tabs cost nothing until they are opened. */
+function render() {
+  hideTip();
+  syncControls();
+  const host = $('#view');
+  host.replaceChildren();
+  host.setAttribute('aria-labelledby', `tab-${state.tab}`);
+  RENDER[state.tab](host);
+  view.draws.forEach(draw => draw());
+  writeHash();
+}
+
+let resizeTimer = null, lastWidth = innerWidth;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (innerWidth === lastWidth || !view) return;
+    lastWidth = innerWidth;
+    view.draws.forEach(draw => draw());
+  }, 150);
+});
+window.addEventListener('hashchange', () => {
+  if (location.hash === lastHash) return;
+  readHash();
+  render();
+});
+
+buildControls();
+readHash();
+render();
+</script>
+</body>
+</html>
