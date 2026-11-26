@@ -2,26 +2,60 @@ from pathlib import Path
 
 from invoke import task
 
+SMOKE_DATASET = "floc"     # the smallest dataset: 36 short runs, a few megabytes
+
+
+def checkout_dir(c):
+    """Where the cneuromod.all checkout lives (see `datasets:` in invoke.yaml)."""
+    entry = c.config.get("datasets")["cneuromod"]
+    return Path(entry if isinstance(entry, str) else entry["output_dir"])
+
+
+def output_dir(c):
+    return Path(c.config.get("output_data_dir"))
+
+
+def dataset_list(datasets):
+    """'floc,things' -> ['floc', 'things']; None stays None (meaning every dataset)."""
+    return [name.strip() for name in datasets.split(",") if name.strip()] if datasets else None
+
 
 # --------------------------------------------------------------------------- #
 # Fetch
 # --------------------------------------------------------------------------- #
 @task(help={
-    "source": "Path to already-present 'papers' data to symlink instead of downloading.",
-    "copy": "Copy the source data instead of symlinking it.",
+    "source": "Path to an existing cneuromod.all checkout to symlink instead of cloning.",
+    "datasets": "Comma-separated datasets to retrieve (default: every dataset with time series).",
+    "strict": "Fail on the first file that cannot be retrieved instead of skipping it.",
 })
-def fetch_papers(c, source=None, copy=False):
+def fetch_cneuromod(c, source=None, datasets=None, strict=False):
     """
-    Retrieve the 'papers' asset (download, or symlink/copy existing data).
+    Make cneuromod.all available and retrieve the files the checks read.
+
+    Clones cneuromod.all (or symlinks an existing checkout given with
+    --source), installs the `bids` and `timeseries` subdatasets of each
+    dataset — never recursively — and gets the parcel time series, the events
+    files and, for videogame datasets, the replays and their frame-wise
+    features. BOLD images are not downloaded.
+
+    Tolerant by default: a file on a remote you cannot reach is skipped with a
+    warning and listed in source_data/.fetch_failures.json, so that the next
+    fetch does not wait for it again (delete that file to retry). See
+    source_data/CONTENT.md for the access the data needs.
     """
-    from airoh.acquisition import fetch_data
-    fetch_data(c, "papers", source=source, copy=copy)
+    from airoh.datalad import install_dataset
+
+    from analysis import fetching
+
+    install_dataset(c, "cneuromod", source=source)
+    fetching.fetch_all(checkout_dir(c), Path(c.config.get("source_data_dir")),
+                       dataset_list(datasets), strict=strict)
 
 @task(help={
-    "papers_source": "Path to existing 'papers' data to symlink instead of downloading.",
-    "copy": "Copy source data instead of symlinking it.",
+    "cneuromod_source": "Path to an existing cneuromod.all checkout to symlink instead of cloning.",
+    "datasets": "Comma-separated datasets to retrieve (default: every dataset with time series).",
 })
-def fetch(c, papers_source=None, copy=False):
+def fetch(c, cneuromod_source=None, datasets=None):
     """
     Retrieve all data assets. Each asset has its own fetch-{name} task; this
     umbrella task routes a per-asset --{name}-source flag to the matching one.
@@ -32,131 +66,133 @@ def fetch(c, papers_source=None, copy=False):
     """
     from airoh.provenance import record_sources
 
-    fetch_papers(c, source=papers_source, copy=copy)
+    fetch_cneuromod(c, source=cneuromod_source, datasets=datasets)
     record_sources(c)
 
 # --------------------------------------------------------------------------- #
 # Analysis steps
 # --------------------------------------------------------------------------- #
-@task(help={"seed": "Seed for the random generator (default: 0)."})
-def run_simulation(c, seed=None):
+@task(help={"datasets": "Comma-separated datasets (default: every installed dataset)."})
+def run_index(c, datasets=None):
     """
-    Run a small simulation.
+    Match every run of the parcel time series with its BOLD and events files.
 
-    Seeded, so a rerun reproduces the same numbers and the same figures —
-    pass --seed to draw a different sample.
-
-    Skipped when its output already exists — every run step caches that way, so
-    a repeated `invoke run` costs nothing. Use `invoke clean-simulation` (or
-    `invoke run --force`) to redo it.
+    One table per dataset in output_data/index/. Skipped for a dataset whose
+    table already exists — every run step caches that way; use
+    `invoke clean-index` (or `invoke run --force`) to redo it.
     """
-    from analysis.simulation import DEFAULT_SEED, simulation
+    from analysis import pipeline
 
-    output_dir = Path(c.config.get("output_data_dir"))
-    if (output_dir / "simulation_output.csv").is_file():
-        print("🫧 Skipping simulation (output exists)")
-        return
-    simulation(output_dir, seed=DEFAULT_SEED if seed is None else int(seed))
+    pipeline.run_index(checkout_dir(c), output_dir(c), dataset_list(datasets))
 
-def montage_dpi(c):
+@task(help={
+    "datasets": "Comma-separated datasets (default: every installed dataset).",
+    "subjects": "Comma-separated subjects, e.g. sub-01,sub-02 (default: all).",
+    "jobs": "Worker processes, one subject each (default: 6).",
+    "smoke": "Scan only the smallest dataset.",
+})
+def run_scan(c, datasets=None, subjects=None, jobs=6, smoke=False):
     """
-    The DPI the montage is composed at, from `figures:` in invoke.yaml.
+    Brain-signal scan: fit of every predictor with the BOLD at every shift.
 
-    This template has a single montage, so the first entry's `dpi` is the
-    answer; a project with several would need to decide which one a given
-    notebook's panels belong to. Defaults to 300, matching
-    `airoh.figures.compose_figure`.
+    The slow step (about 15 minutes for every dataset on 6 cores). One file per
+    dataset in output_data/scan/; a dataset whose file exists is skipped.
+    Restricting --subjects is for trying things out: the result then holds
+    those subjects only, and the "other subjects" predictor needs at least 3.
     """
-    for entry in (c.config.get("figures") or {}).values():
-        return entry.get("dpi", 300)
-    return 300
+    from analysis import pipeline
+
+    names = [SMOKE_DATASET] if smoke else dataset_list(datasets)
+    pipeline.run_scan(checkout_dir(c), output_dir(c), names,
+                      subjects=dataset_list(subjects), n_jobs=int(jobs))
+
+@task(help={
+    "datasets": "Comma-separated videogame datasets (default: every installed one).",
+    "jobs": "Worker processes, one subject each (default: 6).",
+})
+def run_repetitions(c, datasets=None, jobs=6):
+    """
+    Videogame datasets: check that each play points at its own replay.
+
+    One file per videogame dataset in output_data/repetitions/; other datasets
+    have no replay files and are left out. Needs the scan of the dataset.
+    """
+    from analysis import pipeline
+
+    pipeline.run_repetitions(checkout_dir(c), output_dir(c), dataset_list(datasets),
+                             n_jobs=int(jobs))
+
+@task(help={"datasets": "Comma-separated datasets (default: every scanned dataset)."})
+def run_flags(c, datasets=None):
+    """
+    Turn each dataset's scan into findings: start shift, pairing, end of run, drift.
+
+    One file per dataset in output_data/flags/. Reads the scan only, so it is
+    quick: after changing a threshold in analysis/settings.py, run
+    `invoke clean-flags` then `invoke run`.
+    """
+    from analysis import pipeline
+
+    names = dataset_list(datasets) or pipeline.scanned(output_dir(c))
+    pipeline.run_flags(output_dir(c), names)
 
 @task
-def run_figure_layout(c):
+def run_tables(c):
     """
-    Write every montage's panel geometry to figures_dir/panel_sizes.json.
+    Write the findings of every dataset as TSV tables in output_data/tables/.
 
-    Read by the notebook (see figure_simulation.ipynb) so every placed panel
-    renders at exactly the physical size the montage allocates it. Always
-    re-runs, never skipped: it is cheap, and a box resized in Inkscape must
-    take effect on the very next `invoke run`.
+    Always rewritten: it is quick, and the tables must match the flags.
     """
-    from airoh.figures import figure_layout
-    figure_layout(c)
+    from analysis import pipeline
 
-@task(pre=[run_simulation, run_figure_layout])
-def run_notebooks(c):
-    """
-    Generate figures from the simulation output using a notebook.
-
-    `run-figure-layout` runs first because the notebook sizes its placed
-    panels from the geometry it writes — and `clean-figures` wipes that file
-    along with the figures dir it lives in. (`run` calls both explicitly, in
-    the same order; this `pre=` only covers invoking `run-notebooks` on its
-    own.)
-
-    Exports the montage's configured DPI as FIGURE_MONTAGE_DPI so notebooks
-    save at it rather than hardcoding 300 — panel *pixels* must equal
-    figsize × dpi for placement to stay 1:1, so the resolution has to come
-    from the same config the montage is composed with.
-    """
-    import os
-
-    from airoh.utils import ensure_dir_exist
-    from airoh.utils import run_notebooks as airoh_run_notebooks
-
-    notebooks_dir = Path(c.config.get("notebooks_dir"))
-    figures_base = Path(c.config.get("figures_dir")).resolve()
-
-    os.environ["FIGURE_MONTAGE_DPI"] = str(montage_dpi(c))
-
-    ensure_dir_exist(c, "output_data_dir")
-    airoh_run_notebooks(c, notebooks_dir, figures_base,
-                         keys=["source_data_dir", "output_data_dir", "figures_dir"])
+    pipeline.run_tables(output_dir(c))
 
 @task
-def compose_figure(c):
+def run_dashboard(c):
     """
-    Render the hand-authored figure_montage.svg to PNG with Inkscape.
+    Build the dashboard: output_data/dashboard/qa_align.html.
 
-    Optional: Inkscape is only needed to recompose the final figure, never to
-    reproduce a panel, so a missing binary warns and returns rather than
-    failing the run.
+    One self-contained page (data inside, no network needed). Always rebuilt:
+    it is quick, and the page must match the flags.
     """
-    from airoh.figures import compose_figure as airoh_compose_figure
-    airoh_compose_figure(c)
+    from analysis import pipeline
+
+    pipeline.run_dashboard(output_dir(c))
 
 # --------------------------------------------------------------------------- #
 # Pipeline
 # --------------------------------------------------------------------------- #
 @task(help={
     "force": "Delete every computed output first, then run from scratch.",
+    "datasets": "Comma-separated datasets (default: every installed dataset).",
+    "jobs": "Worker processes for the scan and the repetitions check (default: 6).",
 })
-def run(c, force=False):
+def run(c, force=False, datasets=None, jobs=6):
     """
-    Full pipeline: simulation → figure layout → notebooks → composed figure.
+    Full pipeline: index → scan → repetitions → flags → tables → dashboard.
 
     Steps are called directly rather than through `pre=`, so that flags like
     --force reach them: a `pre=` chain runs before this body, which would be
     too late.
 
-    Every step caches by checking whether its output already exists, so a
-    repeated `run` does nothing. That is deliberate — but it also means an
-    edited script or notebook will NOT re-run on its own. `--force` is the
-    sledgehammer: clean everything, then start over. To redo one step, call its
-    `clean-{name}` task and run again. `run-figure-layout` is the one
-    deliberate exception: it always re-runs (see its docstring).
+    The per-dataset steps cache by checking whether their output already
+    exists, so a repeated `run` only rebuilds the tables and the dashboard.
+    That is deliberate — but it also means edited code will NOT re-run on its
+    own. `--force` is the sledgehammer: clean everything, then start over. To
+    redo one step, call its `clean-{name}` task and run again.
     """
     from airoh.provenance import record_run
 
     if force:
         print("💥 --force: removing every computed output before running")
         clean(c)
-    run_simulation(c)
-    run_figure_layout(c)
-    run_notebooks(c)
-    compose_figure(c)
-    record_run(c, tasks="run-simulation,run-figure-layout,run-notebooks,compose-figure")
+    run_index(c, datasets=datasets)
+    run_scan(c, datasets=datasets, jobs=jobs)
+    run_repetitions(c, datasets=datasets, jobs=jobs)
+    run_flags(c, datasets=datasets)
+    run_tables(c)
+    run_dashboard(c)
+    record_run(c, tasks="run-index,run-scan,run-repetitions,run-flags,run-tables,run-dashboard")
     print("all analyses completed")
 
 @task
@@ -164,15 +200,25 @@ def run_smoke(c):
     """
     Smoke test: a minimal end-to-end pass over the whole pipeline.
 
-    Calls the steps directly (rather than via `pre=`) so each can be given a
-    reduced workload. The point is to exercise the plumbing quickly, not to
-    produce real results.
+    Fetches and processes the smallest dataset only, into
+    output_data/smoke/, so it never mixes with real results. Retrieval is
+    strict here: if the data cannot be fetched, the test must fail rather than
+    pass on an empty result.
     """
-    fetch(c)
-    run_simulation(c)
-    run_figure_layout(c)
-    run_notebooks(c)
-    compose_figure(c)
+    from analysis import pipeline
+
+    fetch_cneuromod(c, datasets=SMOKE_DATASET, strict=True)
+    smoke_dir = output_dir(c) / "smoke"
+    checkout = checkout_dir(c)
+    pipeline.run_index(checkout, smoke_dir, [SMOKE_DATASET])
+    pipeline.run_scan(checkout, smoke_dir, [SMOKE_DATASET], n_jobs=2)
+    pipeline.run_repetitions(checkout, smoke_dir, [SMOKE_DATASET], n_jobs=2)
+    pipeline.run_flags(smoke_dir, [SMOKE_DATASET])
+    pipeline.run_tables(smoke_dir)
+    pipeline.run_dashboard(smoke_dir)
+    page = smoke_dir / "dashboard" / "qa_align.html"
+    if not page.is_file():
+        raise RuntimeError(f"Smoke test failed: {page} was not written.")
     print("✅ Smoke test complete.")
 
 @task(help={
@@ -193,38 +239,56 @@ def verify(c, skip=None, strict=False):
 # --------------------------------------------------------------------------- #
 # Clean
 # --------------------------------------------------------------------------- #
-@task
-def clean_simulation(c):
-    """
-    Remove the simulation outputs.
-    """
-    from airoh.utils import clean_folder
-    clean_folder(c, "output_data_dir", "*.csv")
+def remove_step(c, step):
+    """Remove the output folder of one step (and the smoke test's copy)."""
+    import shutil
+
+    for folder in (output_dir(c) / step, output_dir(c) / "smoke" / step):
+        if folder.exists():
+            shutil.rmtree(folder)
+            print(f"🧹 Removed: {folder}")
 
 @task
-def clean_figures(c):
+def clean_index(c):
     """
-    Remove the figures dir (per-notebook panels, the "already ran" sentinels,
-    and panel_sizes.json).
-
-    Leaving a notebook's sentinel folder behind would make the next `run`
-    skip it even though its figures are gone, so the whole figures_dir tree
-    is removed, not just the PNGs inside it.
+    Remove the run indexes (output_data/index/).
     """
-    from airoh.utils import clean_folder
-    clean_folder(c, "figures_dir")
+    remove_step(c, "index")
 
 @task
-def clean_figure(c):
+def clean_scan(c):
     """
-    Remove the composed montage PNG (figure_montage.png).
+    Remove the scans (output_data/scan/). Recomputing them is the slow step.
+    """
+    remove_step(c, "scan")
 
-    Never the SVG: that one is hand-authored in Inkscape and is a pipeline
-    *source*, despite living in output_data/ (its relative image links
-    resolve from there).
+@task
+def clean_repetitions(c):
     """
-    from airoh.figures import clean_figure as airoh_clean_figure
-    airoh_clean_figure(c)
+    Remove the repetitions measures (output_data/repetitions/).
+    """
+    remove_step(c, "repetitions")
+
+@task
+def clean_flags(c):
+    """
+    Remove the findings (output_data/flags/).
+    """
+    remove_step(c, "flags")
+
+@task
+def clean_tables(c):
+    """
+    Remove the TSV tables (output_data/tables/).
+    """
+    remove_step(c, "tables")
+
+@task
+def clean_dashboard(c):
+    """
+    Remove the dashboard (output_data/dashboard/).
+    """
+    remove_step(c, "dashboard")
 
 @task
 def clean(c):
@@ -236,30 +300,36 @@ def clean(c):
     Calling `clean(c)` from Python — which is what `run --force` does — would
     otherwise execute an empty function and silently delete nothing.
     """
-    clean_simulation(c)
-    clean_figures(c)
-    clean_figure(c)
+    clean_index(c)
+    clean_scan(c)
+    clean_repetitions(c)
+    clean_flags(c)
+    clean_tables(c)
+    clean_dashboard(c)
 
 @task
-def clean_papers(c):
+def clean_cneuromod(c):
     """
-    Remove the 'papers' source asset (the downloaded or symlinked file).
+    Remove the cneuromod.all source asset (the checkout, or the symlink to one).
 
     Not called by `clean` or `run --force` — those only touch output_data/.
-    Use this (or the umbrella `clean-source`) before `invoke fetch-papers` when
-    you need to point a stale symlink somewhere new: fetch never overwrites a
-    real file or existing symlink sitting at the destination.
+    A symlink is unlinked. A real checkout is left in place and reported:
+    its git-annex content is write-protected, and deleting gigabytes of data
+    should be your decision, not a side effect.
     """
-    papers_file = Path(c.config.get("files")["papers"]["output_file"])
-    if papers_file.is_symlink() or papers_file.exists():
-        papers_file.unlink()
-        print(f"🧹 Removed: {papers_file}")
+    checkout = checkout_dir(c)
+    if checkout.is_symlink():
+        checkout.unlink()
+        print(f"🧹 Removed link: {checkout}")
+    elif checkout.exists():
+        print(f"🫧 {checkout} is a real checkout, not a link: left in place. "
+              "Remove it yourself if you mean to (git-annex content is write-protected).")
     else:
-        print(f"🫧 Skipping: {papers_file} does not exist.")
+        print(f"🫧 Skipping: {checkout} does not exist.")
 
 @task
 def clean_source(c):
     """
     Remove all source data assets. Body calls each clean-{name} task.
     """
-    clean_papers(c)
+    clean_cneuromod(c)

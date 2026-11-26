@@ -2,3 +2,11 @@
 
 # Provenance is tracked: it records what the inputs actually were.
 !MANIFEST.json
+
+# The cneuromod.all checkout (or a symlink to one) lives here; it is a datalad
+# dataset with its own history and must never be committed to this repository.
+cneuromod.all
+cneuromod.all/
+
+# List of files the last fetch could not reach (machine-specific).
+.fetch_failures.json

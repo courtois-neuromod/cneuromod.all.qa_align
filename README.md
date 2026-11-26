@@ -1,26 +1,69 @@
-# Airoh Template: Reproducible Pipelines Made Simple
+# cneuromod.all.qa_align
 
-_why don't you have a cup of relaxing jasmine tea?_
+Quality assessment of the alignment between the data streams of the
+[Courtois NeuroMod](https://www.cneuromod.ca/) datasets: does each BOLD run
+start with its events, do the events belong to that run, do both end together,
+and does the timing hold from the start of the run to its end?
 
-This repository is a template for structuring a reproducible data analysis. Built on the [`invoke`](https://www.pyinvoke.org/) task runner, it lets you go from clean clone to output figures with just a few commands.
+The checks read the timing **from the brain signal itself**. The events of a
+run are turned into a predicted BOLD signal, which is slid along the measured
+one; the shift at which they fit best should be the same in every run of a
+task. No task log is needed, so the same checks apply to every dataset of
+[cneuromod.all](https://github.com/courtois-neuromod/cneuromod.all), from a
+clean clone to one dashboard:
 
-The logic is powered by [`airoh`](https://pypi.org/project/airoh/), a lightweight, pip-installable Python package of reusable `invoke` tasks. This repository runs a small demo analysis to show how the template works. It should be easy to adapt to a variety of projects.
-
-**This template is designed to be used with [Claude Code](https://claude.ai/code).** Claude reads the project's `CLAUDE.md` at the start of every session and knows the pipeline conventions — task naming, idempotency, smoke tests — out of the box. To initialize a new project from this template, open Claude Code and run `/init-airoh-project`. The skill will walk you through project setup, fetch/run/clean task implementation, and a smoke test end-to-end.
-
-⚠️ **Status**: This template is in its early days. Expect rapid iteration and changes.
-
----
-
-## ✨ TL;DR:
-
-This repository is a [GitHub template](https://github.com/airoh-pipeline/airoh-template/generate). Click **"Use this template"** to create your own analysis project.
 ```bash
 uv sync
 uv run invoke fetch
 uv run invoke run
+# then open output_data/dashboard/qa_align.html
 ```
-Voilà — from clone to full reproduction.
+
+This repository follows the [`airoh`](https://pypi.org/project/airoh/)
+template: an [`invoke`](https://www.pyinvoke.org/) task runner around plain
+Python modules in `analysis/`.
+
+---
+
+## 🔍 What is checked
+
+| Check | Question | Evidence |
+|---|---|---|
+| **Start shift** | Did the BOLD start with the events' t=0? | Best shift of each predictor against the usual one of its task; the scanner's and the task's clocks where the events keep the task clock |
+| **Pairing** | Are these the events of this run? | Fit with the run's own events against the events of the neighbouring runs |
+| **End of run** | Do events and BOLD end together? | Time between the last event and the end of the BOLD |
+| **Drift** | Does the timing hold along the run? | Best shift in sliding windows |
+| **Repetitions** | Does each play point at its own replay? | Videogame datasets: replay length against its slot in the events, and fit with the brain |
+| **Coverage** | What could not be checked? | Runs without time series, BOLD or events |
+
+A check uses several **predictors**, each a different reading of the same run:
+
+- from the events of any dataset: *stimulus on/off*, the main *conditions*, and
+  *button presses*;
+- where every subject received the same stimulus: *other subjects* — the mean
+  BOLD of the other subjects, which needs no events file and so tells an events
+  problem from a BOLD problem;
+- for videogame datasets, from the replay of each play: *button presses*,
+  *screen luminance*, *optical flow* and *audio envelope*.
+
+Not every predictor works everywhere, so each one only votes for a task where
+it is **reliable** (most runs agree on the same shift), and a run's result
+always comes from all its reliable predictors together: a real shift moves
+(nearly) all of them. Each check is also run on simulated faults, to state what
+it can and cannot see in each dataset.
+
+Not every check is possible for every dataset. The dashboard says which ones
+ran, and why the others could not:
+
+| Dataset family | Predictors | Checks that do not apply |
+|---|---|---|
+| Videogames (`mario`, `mariostars`, `mario3`, `shinobi`) | game on/off, button presses, luminance, optical flow, audio; clocks where the events keep the task clock | — |
+| Naturalistic (`friends`, `movie10`, `narratives`, `ood`, `harrypotter`, `petit-prince`) | other subjects; stimulus on/off where the events are available | Repetitions |
+| Tasks (`floc`, `hcptrt`, `things`, `triplets`, `retinotopy`, `langlocalizer`, `gamepad`, ...) | stimulus on/off, conditions, button presses, other subjects | Repetitions |
+| Different stimulus per subject and no usable events (`multfs`, `mutemusic`) | none | Everything but Coverage |
+
+A dataset that is not known to `analysis/datasets.py` is checked with the
+defaults, so a new dataset of cneuromod.all works without changing the code.
 
 ---
 
@@ -45,41 +88,32 @@ conda env create -n airoh_env -f environment.yml
 conda activate airoh_env
 ```
 
+The data is retrieved with [DataLad](https://www.datalad.org/) and git-annex,
+which the dependencies install.
+
 ---
 
 ### **Step 2**: Fetch the source data
 
 ```bash
+export AWS_ACCESS_KEY_ID=<your key>  AWS_SECRET_ACCESS_KEY=<your secret>
 invoke fetch
 ```
 
-Downloads the configured file(s) listed under `files:` in `invoke.yaml`. Every asset also has its own `fetch-{name}` task (here, `fetch-papers`), and the umbrella `fetch` calls them all.
+Clones cneuromod.all into `source_data/`, installs the `bids` and `timeseries`
+subdatasets of every dataset (never recursively), and gets the files the checks
+read: parcel time series, events files and, for the videogame datasets, the
+replays. About 11 GB; no BOLD image is downloaded. The data needs CNeuroMod
+credentials — see `source_data/CONTENT.md` for how to get them and for what a
+fetch without access looks like.
 
-Already have the data on disk? Point a fetch task at it and it creates a **symlink** instead of downloading. Each `fetch-{name}` takes a plain `--source`; the umbrella `fetch` routes a per-asset `--{name}-source` to the matching one:
-
-```bash
-invoke fetch-papers --source /path/to/existing/data   # symlink to existing data
-invoke fetch-papers --source /path/to/existing/data --copy  # make a real copy instead
-invoke fetch --papers-source /path/to/existing/data   # same, via the umbrella task
-```
-
-You can also set a per-asset `source:` under `files:` in `invoke.yaml` to make this the default for that asset. Files *and* whole directories are supported, and the operation is idempotent.
-
-Want to see it work? This little walkthrough stands in a `/tmp` copy for a dataset that already lives on your disk:
+Already have a checkout of cneuromod.all? Link it instead of cloning:
 
 ```bash
-invoke fetch                                         # downloads the tsv
-cp source_data/*.tsv /tmp/shared_papers.tsv          # pretend it's a shared dataset
-rm source_data/*.tsv                                 # clear the local copy
-invoke fetch --papers-source /tmp/shared_papers.tsv  # symlinks instead of downloading
-ls -l source_data/                                   # -> /tmp/shared_papers.tsv
+invoke fetch --cneuromod-source /path/to/cneuromod.all
 ```
 
-The `rm` step matters: fetch will never overwrite a real file sitting at the destination. To re-point a stale symlink (or drop a real downloaded file) instead of removing it by hand, use `invoke clean-papers` (or the umbrella `invoke clean-source`) — not `invoke clean`, which only touches `output_data/` and never source data. Once the old file is gone, running the fetch command again changes nothing if the link already points where you asked — it just notices and moves on.
-
-Each `--source` names one path for one asset — there's deliberately no single flag that points every asset at one place, since that only ever means "link them all to the same file." As you add assets, give each one its own `fetch-{name}` task and its own `--{name}-source` on the umbrella `fetch`.
-
-> **Datalad datasets are different.** `--source` symlinks or copies a plain file or folder; it does **not** run `datalad get`, so a symlinked datalad dataset exposes only whatever content is already present (un-fetched files show up as broken symlinks), and `--copy` errors on those un-fetched files. For a datalad dataset, use `airoh.datalad.install_dataset`/`get_data` with a `datasets:` entry in `invoke.yaml` instead — see `CLAUDE.md`, "Datalad datasets, and plain assets".
+To retrieve some datasets only: `invoke fetch --datasets floc,things`.
 
 ---
 
@@ -89,127 +123,137 @@ Each `--source` names one path for one asset — there's deliberately no single 
 invoke run
 ```
 
-Runs the full analysis pipeline in order. Steps that have already produced output are skipped automatically — only missing outputs are recomputed.
+Runs every step in order, for every dataset that was fetched: index → scan →
+repetitions → flags → tables → dashboard. The scan is the slow step: about
+20 minutes for all datasets on 6 cores (`--jobs` changes that). `--datasets
+floc,things` restricts the run.
 
-That caching is by file existence, not by content: **a step you just edited will still be skipped**, because its old output is sitting right there. When results start looking stale, force a clean rebuild:
+Steps that have already produced their output for a dataset are skipped — only
+missing outputs are recomputed. That caching is by file existence, not by
+content: **a step you just edited will still be skipped**, because its old
+output is sitting right there. To rebuild everything:
 
 ```bash
 invoke run --force    # clean everything, then run from scratch
 ```
 
-To redo a single step, remove its outputs and run again:
+To redo a single step, remove its outputs and run again. The usual case is a
+changed threshold in `analysis/settings.py`, which only needs the quick steps:
 
 ```bash
-invoke clean-simulation
+invoke clean-flags
 invoke run
 ```
 
-`invoke run` also writes `output_data/PROVENANCE.json`, recording the project's git commit, the environment, the inputs it consumed and a checksum of every output — so a result stays traceable to whatever produced it.
+`invoke run` also writes `output_data/PROVENANCE.json`, recording the project's
+git commit, the environment, the inputs it consumed and a checksum of every
+output — so a result stays traceable to whatever produced it.
 
 ---
 
-### **Step 4**: Check that everything still agrees
+### **Step 4**: Read the results
+
+Open `output_data/dashboard/qa_align.html` in a browser. It is one
+self-contained page: the Overview lists every dataset against every check and
+every flagged run; each check has its own tab with its method, its results and
+what a normal run looks like. The same findings are in `output_data/tables/` as
+TSV. See `output_data/CONTENT.md` for every file.
+
+A flagged run is a run to look at, not a verdict. Runs whose problem already
+has a public reference (a GitHub issue of the dataset, a notes file distributed
+with it) are marked as documented: they are listed in
+`analysis/known_issues.tsv`, which you extend by adding a row.
+
+---
+
+### **Step 5**: Check that everything still agrees
 
 ```bash
 invoke verify
 ```
 
-Compares the project against its own documentation: the task list in this README, the packages in `requirements.txt` versus `pyproject.toml`, the paths the docs mention, each data folder against its `CONTENT.md`, config keys, the size and type of what git tracks, and the linter. It exits non-zero if anything has drifted.
+Compares the project against its own documentation: the task list in this
+README, the packages in `requirements.txt` versus `pyproject.toml`, the paths
+the docs mention, each data folder against its `CONTENT.md`, config keys, the
+size and type of what git tracks, and the linter. It exits non-zero if anything
+has drifted.
 
-Run it before committing. It is deliberately not part of `invoke run` — reproducing results should never depend on the documentation being tidy.
+Run it before committing. It is deliberately not part of `invoke run` —
+reproducing results should never depend on the documentation being tidy.
+
+The unit tests build a small synthetic dataset with a planted shift and a
+planted swap, and need no data: `uv run --with pytest python -m pytest tests`.
 
 ---
 
-### **Step 5**: Clean outputs
+### **Step 6**: Clean outputs
 
 ```bash
 invoke clean          # remove all outputs
 invoke clean-{name}   # remove outputs of one specific step
-invoke clean-source   # remove all source data assets (e.g. before re-fetching)
+invoke clean-source   # unlink the cneuromod.all checkout (a real clone is left in place)
 ```
+
+---
+
+## 🧰 Task overview
+
+| Task | Description |
+|---|---|
+| `fetch` | Retrieve all data assets and record them in `source_data/MANIFEST.json` |
+| `fetch-cneuromod` | Clone or link cneuromod.all, install the subdatasets, get the files the checks read |
+| `run` | Full pipeline: index → scan → repetitions → flags → tables → dashboard |
+| `run-index` | Match every run of the parcel time series with its BOLD and events files |
+| `run-scan` | Brain-signal scan: fit of every predictor with the BOLD at every shift (slow) |
+| `run-repetitions` | Videogame datasets: check that each play points at its own replay |
+| `run-flags` | Turn each dataset's scan into findings |
+| `run-tables` | Write the findings of every dataset as TSV tables |
+| `run-dashboard` | Build `output_data/dashboard/qa_align.html` |
+| `run-smoke` | Fast end-to-end pass on the smallest dataset, into `output_data/smoke/` |
+| `verify` | Check that the code, config, data and docs still agree |
+| `clean` | Remove all computed outputs |
+| `clean-index` | Remove the run indexes |
+| `clean-scan` | Remove the scans |
+| `clean-repetitions` | Remove the repetitions measures |
+| `clean-flags` | Remove the findings |
+| `clean-tables` | Remove the TSV tables |
+| `clean-dashboard` | Remove the dashboard |
+| `clean-cneuromod` | Unlink the cneuromod.all checkout |
+| `clean-source` | Remove all source data assets |
+
+Use `invoke --list` or `invoke --help <task>` for details.
 
 ---
 
 ## 🧠 Design principles
 
-Airoh projects follow a few conventions that keep analyses fast, reproducible, and easy to pick up:
+Airoh projects follow a few conventions that keep analyses fast, reproducible,
+and easy to pick up:
 
-- **Analysis in code, visualization in notebooks.** Heavy computation lives in `analysis/` Python modules and is run by `invoke` tasks. Notebooks only read results and produce figures — so they stay fast.
-- **Idempotent steps.** Each `run-{name}` task checks whether its outputs already exist and skips if they do. You can call `invoke run` repeatedly while working on a later step without re-running earlier ones. The flip side: caching is by existence, so `invoke run --force` is how you rebuild after editing something.
-- **Mirrored clean tasks.** Every `run-{name}` has a matching `clean-{name}` that removes only its outputs. The top-level `clean` calls them all.
-- **Smoke test.** `invoke run-smoke` does a fast minimal pass to verify the pipeline end-to-end.
-- **Checked documentation.** `invoke verify` compares the project against its own docs, so drift is caught mechanically instead of by memory.
-- **Recorded provenance.** `fetch` and `run` write `MANIFEST.json` and `PROVENANCE.json` — what the inputs actually were, and what produced the outputs.
-- **Hand-authored montage, single source of truth for layout.** `output_data/figure_montage.svg` places each notebook panel by relative path; `run-figure-layout` reads those boxes into `panel_sizes.json` so notebooks render every panel at exactly the size it will be placed at, and `compose-figure` renders the montage with Inkscape (optional — skipped with a warning if not installed). See `CLAUDE.md`, "Figures: the Inkscape montage pattern".
+- **Fetch retrieves, run reads.** `invoke run` never downloads anything: a run
+  whose files are missing is reported in the Coverage tab.
+- **Analysis in code.** Computation lives in `analysis/` Python modules and is
+  run by `invoke` tasks; the dashboard only displays what the tables contain.
+- **Idempotent steps.** Each per-dataset step checks whether its output already
+  exists and skips if it does. The flip side: caching is by existence, so
+  `invoke run --force` is how you rebuild after editing something.
+- **Mirrored clean tasks.** Every `run-{name}` has a matching `clean-{name}`
+  that removes only its outputs. The top-level `clean` calls them all.
+- **Smoke test.** `invoke run-smoke` does a fast minimal pass to verify the
+  pipeline end-to-end.
 
----
+## 🗂️ Code map
 
-## 🧰 Task Overview
-
-| Task                | Description                                              |
-| ------------------- | -------------------------------------------------------- |
-| `fetch`             | Gets all source data; routes a per-asset `--{name}-source` to each `fetch-{name}` |
-| `fetch-{name}`      | Gets one asset: downloads from `invoke.yaml`, or symlinks/copies existing data via `--source` |
-| `run`               | Runs the full pipeline (all `run-{name}` steps in order); `--force` cleans first |
-| `run-{name}`        | Runs one analysis step; skips if outputs already exist   |
-| `run-simulation`    | The demo analysis step shipped with this template        |
-| `run-figure-layout` | Writes the montage's panel geometry to `output_data/figures/panel_sizes.json`; always re-runs |
-| `run-notebooks`     | Executes notebooks and saves figures to `output_data/figures/` |
-| `compose-figure`    | Renders `figure_montage.svg` to PNG with Inkscape (optional binary) |
-| `run-smoke`         | Fast end-to-end pass to check the pipeline is wired correctly |
-| `verify`            | Checks that code, config, data and docs still agree      |
-| `clean`             | Removes all generated outputs                            |
-| `clean-{name}`      | Removes outputs of one specific step                     |
-| `clean-figures`     | Removes the figures dir (panels, notebook sentinels, panel_sizes.json) |
-| `clean-figure`      | Removes the composed montage PNG (never the hand-authored SVG) |
-| `clean-source`      | Removes all source data assets; routes to each `clean-{name}` |
-| `clean-papers`      | Removes the 'papers' source asset                        |
-
-Use `invoke --list` or `invoke --help <task>` for descriptions and usage.
-
----
-
-## 📁 Folder Structure
-
-| Folder / File  | Description                              |
-| -------------- | ---------------------------------------- |
-| `analysis/`    | Pure Python analysis logic, called by invoke tasks |
-| `notebooks/`   | Jupyter notebooks for visualization (one per figure) |
-| `source_data/` | Raw source datasets — see [`source_data/CONTENT.md`](source_data/CONTENT.md) |
-| `output_data/` | Generated results and figures — see [`output_data/CONTENT.md`](output_data/CONTENT.md) |
-| `tasks.py`     | Project-specific invoke tasks            |
-| `invoke.yaml`  | Config: paths, data sources, parameters  |
-
----
-
-## 🧭 Tips
-
-* Use `invoke --complete` for tab-completion support
-* Configure paths and data sources in `invoke.yaml`
-* To use this template for a new project, start from [`airoh-template`](https://github.com/airoh-pipeline/airoh-template) and customize `tasks.py` + `invoke.yaml`
-
----
-
-## 🔁 Want to contribute?
-
-Submit an issue or PR on [`airoh`](https://github.com/SIMEXP/airoh).
-
----
-
-## Philosophy
-
-Inspired by Uncle Iroh from *Avatar: The Last Airbender*, `airoh` aims to bring simplicity, reusability, and clarity to research infrastructure — one well-structured task at a time.
-
-**Core principles:**
-
-- **Reproducibility first.** A pipeline is only useful if someone else — or future you — can run it from scratch and get the same result. Every step is scripted, every dependency declared.
-- **Simple by default, extensible by need.** Three tasks (`fetch`, `run`, `clean`) cover most projects. Add complexity only when the analysis demands it.
-- **Code for analysis, notebooks for figures.** Heavy computation belongs in `analysis/` Python modules. Notebooks are for reading results and producing plots — they should be fast and focused.
-- **Idempotent steps.** Re-running `invoke run` never wastes time. Each step checks whether its outputs exist and skips if they do.
-- **AI-native.** This template is built to be initialized and extended with Claude Code. The `CLAUDE.md` file gives Claude the context it needs to help with the pipeline without needing to re-explain conventions every session.
-
----
-
-### Uncle Airoh
-
-When working in this project, Claude Code responds as **Uncle Airoh**: patient, warm, and wise. Errors are explained gently, tradeoffs are framed as learning opportunities, and a calming cup of jasmine tea is always on offer when things get heated.
+| Module | Role |
+|---|---|
+| `analysis/settings.py` | Every grid, range and threshold, with its meaning |
+| `analysis/datasets.py` | What differs between datasets: kind, comparable runs, shared stimuli |
+| `analysis/fetching.py` | What to install and get from cneuromod.all |
+| `analysis/bids_index.py` | Run index: time series ↔ BOLD ↔ events |
+| `analysis/predictors/` | Predictors from events, from game replays, from the other subjects |
+| `analysis/scan.py` | The brain-signal scan |
+| `analysis/checks/` | One module per check |
+| `analysis/flags.py`, `analysis/findings.py` | Findings per run, and their wording |
+| `analysis/known_issues.tsv` | Runs with a public reference |
+| `analysis/export.py`, `analysis/dashboard/` | Tables and the dashboard |
+| `analysis/pipeline.py` | The steps, as plain functions |

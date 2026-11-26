@@ -2,23 +2,59 @@
 
 After `invoke fetch` is complete, expect the following content:
 
-- `YNIMG_BrainParcellation_summary.tsv` — a spreadsheet with some data on a
-  series of articles, downloaded from figshare.
-- `MANIFEST.json` — what each declared asset actually resolved to: the URL or
-  the real path behind a symlink, its size and checksum, and the commit of the
-  repository it belongs to when it has one. Written by `invoke fetch`.
+- `cneuromod.all/` — a checkout of
+  [cneuromod.all](https://github.com/courtois-neuromod/cneuromod.all), the
+  DataLad superdataset of the Courtois NeuroMod project, or a symlink to a
+  checkout you already have (`invoke fetch --cneuromod-source /path`). For every
+  dataset that has parcel time series, two of its subdatasets are installed —
+  and only those two, never recursively:
+  - `<dataset>/timeseries/` — parcel time series. The checks read
+    `timeseries/cneuromod2026/sub-*/*atlas-cneuromod26*_timeseries.h5`, one
+    HDF5 file per subject holding one array (volumes × parcels) per run.
+  - `<dataset>/bids/` — the raw BIDS dataset. The checks read the events files
+    (`*_events.tsv`), the BOLD sidecars (`*_bold.json`: repetition time and
+    acquisition time; plain git files, nothing to download) and the list of
+    BOLD files. For the videogame datasets (`mario`, `mariostars`, `mario3`,
+    `shinobi`) they also read, for each play, its replay (`gamelogs/*.bk2`) and
+    its frame-wise features (`gamelogs/*_lowlevel.npy`).
+- `MANIFEST.json` — what the asset actually resolved to: the URL or the real
+  path behind a symlink, and the commit of the checkout. Written by
+  `invoke fetch`. The commit of each `bids` and `timeseries` subdataset is
+  recorded per run in `output_data/index/`.
 
-📝 Note: tsv files are **ignored by Git** (see `.gitignore`), so data assets
-won't be tracked by default. `MANIFEST.json` is the deliberate exception — it is
-the record of which inputs a run consumed.
+BOLD images, anatomical images and the other derivatives are never downloaded.
+The files the checks read amount to about 11 GB for every dataset together:
+9 GB of time series, the rest replays and their features.
 
-📝 Note: assets here may be **symlinks** to data that already lives elsewhere on
-disk, rather than local copies — this happens when a fetch task is run with
-`--source` (e.g. `invoke fetch-papers --source /path`, or `invoke fetch
---papers-source /path`), or a `source:` key is set in `invoke.yaml`. The manifest
-records what the link pointed at, so a symlinked input stays identifiable.
+## Access
 
-📝 Note: if this project's data is sensitive, restricted, or needs credentials to
-retrieve, say so here — a collaborator whose `fetch` came back empty needs to
-know whether the pipeline is broken or they simply lack access. See CLAUDE.md,
-"Sensitive and restricted data".
+🔐 The git repositories are public, but the file content is not: it lives on
+the CNeuroMod S3 store and needs credentials. Access is granted on request —
+see the access page of the CNeuroMod documentation, <https://docs.cneuromod.ca>.
+Once you have a key pair:
+
+```bash
+export AWS_ACCESS_KEY_ID=<your key>  AWS_SECRET_ACCESS_KEY=<your secret>
+invoke fetch
+```
+
+Without credentials, `invoke fetch` still clones cneuromod.all and installs the
+subdatasets, gets the few files that are publicly reachable (some events
+files), then warns for the rest and carries on. The time series are not public,
+so `invoke run` then finds nothing to check. An empty result of that kind means
+missing access, not a broken pipeline. The files that could not be reached are
+listed in `.fetch_failures.json` and skipped by later fetches: delete that file
+once you have access.
+
+Two datasets (`narratives`, `ood`) keep their events files on a store that is
+not reachable from outside the lab. Their runs are then checked with the
+"other subjects" predictor only, which needs no events file.
+
+📝 Note: this folder is **ignored by Git** except for `MANIFEST.json` and this
+file. The checkout is a DataLad dataset with its own history; nothing under it
+is ever committed here. The data must not be redistributed: it is covered by
+the CNeuroMod data use agreement.
+
+📝 Note: if `cneuromod.all` is a symlink, the manifest records what it pointed
+at, so a linked input stays identifiable. A symlinked checkout is used as it is:
+`invoke fetch` installs and gets the missing pieces inside it.

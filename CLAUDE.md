@@ -4,7 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is the `airoh-mini` template — a starting point for structuring a reproducible data analysis. It is built on the [`invoke`](https://www.pyinvoke.org/) task runner. The `airoh` pip package provides reusable invoke tasks; this repo customizes them via `tasks.py` and `invoke.yaml`.
+`cneuromod.all.qa_align` assesses the alignment between the data streams of the [Courtois NeuroMod](https://www.cneuromod.ca/) datasets: for every BOLD run of every dataset of [cneuromod.all](https://github.com/courtois-neuromod/cneuromod.all), does the BOLD start with its events, do the events belong to that run, do both end together, and does the timing hold along the run? The timing is read from the brain signal: predictors built from the events (and, for videogames, from the replay of each play; where the stimulus is shared, from the other subjects' BOLD) are slid along the parcel time series, and the best shift is compared across the runs of a task. The result is a set of TSV tables and one self-contained dashboard, `output_data/dashboard/qa_align.html`.
+
+The project is built on the `airoh` template: the [`invoke`](https://www.pyinvoke.org/) task runner, with reusable tasks from the `airoh` pip package customized in `tasks.py` and `invoke.yaml`.
+
+## What the analysis does
+
+Read `README.md` ("What is checked") for the user-facing description. For working on the code:
+
+- **Input.** One cneuromod.all checkout in `source_data/cneuromod.all`. For each dataset, only its `bids` and `timeseries` subdatasets are installed, at the commits cneuromod.all pins. **Never install recursively** (`datalad get -r`, `git submodule update --recursive`): the subdatasets re-expose their own subdatasets and the checkout explodes.
+- **Chunk = dataset.** Every per-dataset step writes one file per dataset under `output_data/<step>/` and skips a dataset whose file exists. `--datasets a,b` restricts a step.
+- **Steps** (`analysis/pipeline.py`, one function each; `tasks.py` wraps them): `index` (runs ↔ BOLD ↔ events) → `scan` (the slow brain-signal scan; no flag is decided here) → `repetitions` (videogame datasets) → `flags` (all the rules; reads the scan only) → `tables` and `dashboard` (always rewritten).
+- **Rules live in `analysis/checks/`**, one module per check, and every threshold in `analysis/settings.py`. `settings.RULES` feeds the dashboard's "Settings and thresholds", so the page never states a number the code does not use. After changing a rule or a threshold: `invoke clean-flags && invoke run`.
+- **Dataset knowledge lives in `analysis/datasets.py`** (kind, family of comparable runs, stimulus identity shared across subjects, tail tolerance). An unlisted dataset gets the defaults. Do not add dataset names anywhere else in the code.
+- **A predictor votes only where it is reliable** (most runs of the task agree on its best shift), and a run's result always combines all its reliable predictors. Keep that principle when adding a predictor or a check: a new predictor goes in `analysis/predictors/` and is picked up by the scan through `analysis/loading.py`.
+- **Known issues are public references only.** `analysis/known_issues.tsv` holds runs documented in a GitHub issue of the dataset or a file distributed with it. Never add notes from private sources (scanning sheets, task logs), and never dates of acquisition.
+- **No task log is read**, by design: everything comes from what cneuromod.all distributes.
+- **The dashboard** is `analysis/dashboard/template.html` (inline CSS and JavaScript, no external library, no network) with the data of `analysis/dashboard/payload.py` embedded by `analysis/dashboard/build.py`. Change the payload and the template together.
+- **Tests** (`tests/`) run without any data: `tests/toy_dataset.py` writes a synthetic checkout with a planted shift and a planted swap. Run them with `uv run --with pytest python -m pytest tests`.
 
 ## Persona
 
@@ -27,13 +44,12 @@ conda env create -n airoh_env -f environment.yml && conda activate airoh_env
 
 With `uv`:
 ```bash
-uv run invoke fetch           # Download source data, record the input manifest
+uv run invoke fetch           # Clone/link cneuromod.all, get the files the checks read, record the manifest
 uv run invoke run             # Full pipeline (cached: skips steps whose output exists)
 uv run invoke run --force     # Clean everything first, then run from scratch
 uv run invoke run-smoke       # Fast end-to-end check that the plumbing works
-uv run invoke run-notebooks   # Execute notebooks, save figures to output_data/figures/
-uv run invoke run-figure-layout # Write the montage's panel geometry to panel_sizes.json (always re-runs)
-uv run invoke compose-figure  # Render figure_montage.svg to PNG with Inkscape (optional binary)
+uv run invoke run-scan --datasets floc   # One step, one dataset (index, scan, repetitions, flags)
+uv run invoke run-dashboard   # Rebuild output_data/dashboard/qa_align.html from the flags
 uv run invoke verify          # Check code, config, data and docs still agree
 uv run invoke clean           # Remove output_data/ contents
 uv run invoke --list          # Show all available tasks
@@ -41,13 +57,12 @@ uv run invoke --list          # Show all available tasks
 
 Without `uv` (activate your environment first):
 ```bash
-invoke fetch              # Download source data (configured in invoke.yaml under files:)
+invoke fetch              # Clone/link cneuromod.all, get the files the checks read, record the manifest
 invoke run                # Full pipeline (cached: skips steps whose output exists)
 invoke run --force        # Clean everything first, then run from scratch
 invoke run-smoke          # Fast end-to-end check that the plumbing works
-invoke run-notebooks      # Execute notebooks, save figures to output_data/figures/
-invoke run-figure-layout  # Write the montage's panel geometry to panel_sizes.json (always re-runs)
-invoke compose-figure     # Render figure_montage.svg to PNG with Inkscape (optional binary)
+invoke run-scan --datasets floc   # One step, one dataset (index, scan, repetitions, flags)
+invoke run-dashboard      # Rebuild output_data/dashboard/qa_align.html from the flags
 invoke verify              # Check code, config, data and docs still agree
 invoke clean              # Remove output_data/ contents
 invoke --list             # Show all available tasks
@@ -59,7 +74,7 @@ invoke --list             # Show all available tasks
 
 **Execution flow:** `invoke run` triggers the project's analysis pipeline by calling each step in its body, in order. The permanent tasks — `fetch`, `run`, `verify`, `clean` — are always present; intermediate steps are project-specific.
 
-**`pre=` chains do not fire when a task is called as a function.** A `pre=` list only runs when invoke executes that task from the command line. `run(c)` or `clean(c)` called from Python executes the body alone — so a `clean` whose real work lives entirely in `pre=` deletes nothing when `run --force` calls it, silently and with a success message. Umbrella tasks that other tasks call therefore do their work in the body. Keep `pre=` only where the task is a command-line entry point (`run-notebooks` depending on the step that produces its input), and remember that anything threading a flag through — `--force`, `--smoke`, a chunk selector — must call its steps directly, since a `pre=` chain has already run by the time the body sees the flag.
+**`pre=` chains do not fire when a task is called as a function.** A `pre=` list only runs when invoke executes that task from the command line. `run(c)` or `clean(c)` called from Python executes the body alone — so a `clean` whose real work lives entirely in `pre=` deletes nothing when `run --force` calls it, silently and with a success message. Umbrella tasks that other tasks call therefore do their work in the body. Keep `pre=` only where the task is a command-line entry point, and remember that anything threading a flag through — `--force`, `--smoke`, a chunk selector — must call its steps directly, since a `pre=` chain has already run by the time the body sees the flag.
 
 **Fetching data — download or symlink:** each data asset in `files:` gets its own `fetch-{name}` task wrapping `airoh.acquisition.fetch_data`, which makes the asset available in one of two ways: **download** from its `url` (default), or **symlink** to already-present data when a source path is given — via `invoke fetch-{name} --source /path` (add `--copy` for a real copy) or a per-asset `source:` key in `invoke.yaml`. The umbrella `fetch` task calls every `fetch-{name}` and exposes a per-asset `--{name}-source` flag that it routes to the matching one. This avoids re-downloading data that already lives on disk (a shared dataset, a sibling repo). Symlinks handle both files and whole directories, and the operation is idempotent. When wiring fetch tasks for a new project, prefer `fetch_data` over the lower-level `download_data`.
 
@@ -67,14 +82,13 @@ invoke --list             # Show all available tasks
 
 See **Data** below for datalad datasets, sensitive data, and recording asset versions.
 
-- `invoke.yaml` — all path and data config (`output_data_dir`, `source_data_dir`, `notebooks_dir`, `files:` for data assets — each with `output_file` plus `url` to download and/or `source` to symlink)
+- `invoke.yaml` — all path and data config (`output_data_dir`, `source_data_dir`, and `datasets:` for the cneuromod.all checkout — `output_dir` plus `url` to clone and/or `source` to symlink). This project has no plain `files:` asset; the `fetch_data` guidance above applies if one is ever added
 - `tasks.py` — project-specific invoke tasks; imports reusable tasks from `airoh` (`airoh.acquisition` for data fetching, `airoh.utils` for general helpers)
 - `analysis/` — pure Python analysis logic, called by tasks in `tasks.py`
-- `notebooks/` — Jupyter notebooks executed by `run_notebooks` via `airoh.utils.run_notebooks`; notebooks receive `OUTPUT_DATA_DIR`, `SOURCE_DATA_DIR` and `FIGURES_DIR` as environment variables, and write into `FIGURES_DIR/{notebook_stem}/`, not directly under `output_data/`
 - `source_data/CONTENT.md` and `output_data/CONTENT.md` — authoritative docs for what each data folder contains; update these when data assets change, do not duplicate their content elsewhere
 - `.claude/skills/` — each skill exists twice: as a directory (the source you edit) and as a `.zip` (what gets copied into projects created from this template). **Re-zip after editing a skill**, or projects keep receiving the old version — this has already happened once: `cd .claude/skills && zip -qr <name>.zip <name> -x '*/.*'`
 
-**Analysis vs. notebooks:** Heavy computation belongs in `analysis/` Python code, invoked by `run-{name}` tasks, which write results to `output_data/`. Notebooks are for visualization only — they read from `output_data/` and produce figures. This keeps notebooks fast and focused.
+**Analysis vs. visualization:** Computation belongs in `analysis/` Python code, invoked by `run-{name}` tasks, which write results to `output_data/`. The dashboard is for visualization only — it displays what `run-flags` decided and never recomputes a finding. This project has no notebooks.
 
 **Idempotent tasks:** Each `run-{name}` task must check whether its outputs already exist and skip execution if they do. This means `invoke run` can be called repeatedly during development of a later step — earlier steps are skipped automatically.
 
@@ -85,25 +99,15 @@ See **Data** below for datalad datasets, sensitive data, and recording asset ver
 
 When results start looking stale or inconsistent, reach for `--force` rather than trying to reason about what is cached. Do not add content-hash invalidation or a dependency graph to `run`; that is the workflow-engine road, and this template deliberately stops short of it.
 
-**Notebook outputs must live in the notebook's own folder.** `run-notebooks` treats `{figures_base}/{notebook_stem}/` as the "already ran" marker for each notebook. A notebook that writes anywhere else never creates its marker and therefore re-runs on every single `invoke run`, however cheap the rest of the pipeline is.
-
-**Figures: the Inkscape montage pattern.** `output_data/figure_montage.svg` is hand-authored in Inkscape and is the **single source of truth for panel layout** — it links each notebook panel by relative path resolved from `output_data/` (e.g. `output_data/figures/figure_simulation/scatter.png`), and the box it places a panel in is that panel's true on-page size. `run-figure-layout` (`airoh.figures.figure_layout`) reads those boxes out of every entry in `invoke.yaml`'s `figures:` mapping and writes them to `output_data/figures/panel_sizes.json` on **every** `invoke run`; `figure_simulation.ipynb` calls `airoh.figures.panel_size(name, default)` to render each panel at exactly that size, so placement is 1:1 and text is never stretched. `compose-figure` (`airoh.figures.compose_figure`) then renders the montage to `figure_montage.png` via the Inkscape CLI, an optional system binary: a missing `inkscape` warns and skips the export rather than failing `invoke run`.
-
-Resizing a box only fully takes effect after the panel it belongs to is re-rendered — and that panel is a notebook output, so it obeys the same existence-based caching as everything else (see **Caching is by existence**, above). `panel_sizes.json` and the composed montage update on every `invoke run` regardless, but a panel whose notebook did *not* re-run keeps its old pixel size, so Inkscape stretches it into the new box — precisely the problem this pattern exists to avoid. After resizing a box, run `invoke clean-figures && invoke run` (or `invoke run --force`) so the affected panel actually redraws at the new size.
-
-Two rules that must be kept wherever a notebook renders a montage panel: **never** pass `bbox_inches="tight"` (it resizes the canvas after the fact, which is exactly what breaks the 1:1 guarantee) — use `layout="constrained"` to reclaim margins inside the fixed canvas instead — and always save at the montage's DPI, so saved pixels equal `figsize × dpi`. That DPI is not hardcoded in the notebook: `run-notebooks` reads it from `figures:` (→ `figure_montage.dpi`, default 300) via the `montage_dpi` helper in `tasks.py` and exports it as `FIGURE_MONTAGE_DPI`, which the notebook reads. Composing the montage at a different resolution therefore re-sizes the panels with it, instead of silently breaking placement.
-
-`run-figure-layout` is a deliberate exception to the existence-based caching described above: it always re-runs, because it is cheap and a box resized in Inkscape must take effect on the very next `invoke run`, not only after a `clean`.
-
 **Task naming conventions:**
-- Fetch tasks are named `fetch-{name}` (e.g. `fetch-papers`), one per data asset; the umbrella `fetch` calls them all and routes a `--{name}-source` flag to each.
-- Analysis tasks are named `run-{name}` (e.g. `run-preprocessing`, `run-model`).
+- Fetch tasks are named `fetch-{name}` (here `fetch-cneuromod`), one per data asset; the umbrella `fetch` calls them all and routes a `--{name}-source` flag to each.
+- Analysis tasks are named `run-{name}` (`run-index`, `run-scan`, `run-repetitions`, `run-flags`, `run-tables`, `run-dashboard`).
 - Cleaning tasks mirror them: `clean-{name}` removes only the outputs of the corresponding step. Granular clean tasks are what make a selective re-run possible, so every run step needs one.
-- The top-level `clean` task calls all `clean-{name}` tasks for **analysis** steps in its body — it only ever touches `output_data/`. Source assets have their own mirrored `clean-{name}` tasks (e.g. `clean-papers`) plus an umbrella `clean-source`, kept separate from `clean` since removing a source asset is a deliberate act (e.g. before re-pointing a stale symlink with `fetch-{name} --source`), not something `run --force` should ever do implicitly.
+- The top-level `clean` task calls all `clean-{name}` tasks for **analysis** steps in its body — it only ever touches `output_data/`. Source assets have their own mirrored `clean-{name}` tasks (here `clean-cneuromod`) plus an umbrella `clean-source`, kept separate from `clean` since removing a source asset is a deliberate act (e.g. before re-pointing a stale symlink with `fetch-{name} --source`), not something `run --force` should ever do implicitly.
 - The top-level `run` task calls all steps in its body, in order.
 - `verify` checks the project against its own documentation; see **Verification**.
 
-**Task parameters:** `run-{name}` tasks should expose chunk or subset parameters (e.g. a subject ID, a chunk index) so that individual pieces can be rerun in isolation. They should also support a `smoke` flag for a fast minimal run useful for testing the pipeline end-to-end without running the full analysis.
+**Task parameters:** `run-{name}` tasks expose chunk or subset parameters (`--datasets`, and `--subjects` for the scan) so that individual pieces can be rerun in isolation. `run-scan` supports a `smoke` flag, and `run-smoke` runs the whole pipeline on the smallest dataset into `output_data/smoke/`.
 
 ## Data
 
@@ -260,13 +264,7 @@ called.
 
 **Testing:** Two baseline checks, and they cover different failures. `invoke run-smoke` is the behavioural one: does the pipeline run end to end and produce something. `invoke verify` is the structural one: do the code, config, data and docs still describe the same project. Run both before committing; neither substitutes for the other. Add unit tests in a tests directory, using the project's chosen test framework, when a function contains non-trivial logic, has edge cases the smoke test won't catch, or is shared across multiple steps. Unit tests are optional for simple glue/orchestration code but encouraged for any pure transformation or computation logic in `analysis/`. The test framework and directory are configured during `init`.
 
-**Template cleanup:** When starting a new project from this template, remove the demo code before adding project-specific work:
-- Delete `run_simulation` from `tasks.py` and remove it from the `pre=` chains on `run_notebooks` and `run`
-- Delete `analysis/simulation.py` (and the `analysis/` folder if it stays empty)
-- Clear or replace `source_data/CONTENT.md` and `output_data/CONTENT.md` with project-specific descriptions
-- Update `invoke.yaml` (`files:`, paths) for the new project's data sources
-
-**Adding a new analysis step:** add a function to `analysis/`, add a `run-{name}` task and a matching `clean-{name}` task in `tasks.py`, call both from the bodies of the top-level `run` and `clean` tasks (see the `pre=` warning above — a body call, not `pre=`), and create or extend a notebook in `notebooks/` for visualization.
+**Adding a new analysis step:** add a function to `analysis/`, add a `run-{name}` task and a matching `clean-{name}` task in `tasks.py`, call both from the bodies of the top-level `run` and `clean` tasks (see the `pre=` warning above — a body call, not `pre=`), add its step function to `analysis/pipeline.py`, and show its results in the dashboard (`analysis/dashboard/payload.py` and `analysis/dashboard/template.html`).
 
 **Evolving CLAUDE.md:** Run `invoke verify` after any structural change — it catches the mechanical half of this instruction (renamed tasks, moved paths, undocumented outputs) that is otherwise left to memory. Keep this file current as the project grows. It should always reflect the actual scope of the project — what it does, what data it uses, and what analysis steps it contains. When adding or removing a task, rename a folder, or change the pipeline structure, update CLAUDE.md in the same commit. Stale guidance here misleads future AI sessions and collaborators alike.
 

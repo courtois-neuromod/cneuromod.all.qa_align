@@ -7,3 +7,16 @@ figures/panel_sizes.json
 
 # Provenance is a tracked output: it records what produced everything else.
 !PROVENANCE.json
+
+# Computed by the alignment QA steps (see CONTENT.md): intermediate results and
+# the dashboard are rebuilt by `invoke run`, never committed.
+index/
+scan/
+repetitions/
+flags/
+tables/
+dashboard/
+
+# Guard: no step writes brain images here, keep it that way.
+*.nii.gz
+*.h5
